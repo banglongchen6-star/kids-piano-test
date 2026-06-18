@@ -238,7 +238,7 @@ async function connectPiano(){
     midi=await navigator.requestMIDIAccess({sysex:true});
     midi.onstatechange=refreshPorts; refreshPorts();
     send(3,[0x0A,0,0]);   // 查询左手设备，自动切模式
-    confirmFlash();        // 琴闪一下，确认双向连通
+    defaultLights(3);      // 键盘默认彩虹常亮
   }catch(e){ setConn(false); alert('连接失败：'+e+'\n（多半未授予 MIDI/SysEx 权限）'); }
 }
 function refreshPorts(){
@@ -251,15 +251,16 @@ function send(comp,payload){ if(out) out.send([0xF0,comp,...payload,0xF7]); }
 function uploadPalette(comp){ const P=[[127,0,0],[127,127,0],[0,127,0],[0,127,127],[0,0,127],[80,0,127],[127,127,127]]; const f=[]; P.forEach(c=>f.push(...c)); send(comp,[0x1E,P.length,1,...f]); }
 function lightAll(comp,n){ const ps=[]; for(let i=0;i<n;i++)ps.push(i,(i%7)+1); send(comp,[0x20,n,...ps]); }
 function allOff(comp,n){ const ps=[]; for(let i=0;i<n;i++)ps.push(i,0); send(comp,[0x20,n,...ps]); }
-function confirmFlash(){ try{ uploadPalette(3); lightAll(3,29); setTimeout(()=>allOff(3,29),700); }catch(e){} }
+const LAMPS={2:9,3:29,4:24};
+function defaultLights(comp){ try{ uploadPalette(comp); lightAll(comp,LAMPS[comp]); }catch(e){} }  // 默认彩虹常亮
 
 //============ 接收：解码 + 发声 + 屏幕点灯 ============//
 function onMidi(e){
   const d=[...e.data];
   if(d[0]===0xF0){
     const cmd=d[2], p=d.slice(3,d.length-1);
-    if(cmd===0x0A){ const m=p[0]===2?'keys24':(p[0]===1?'capsule':null); if(m) setMode(m); }
-    if(cmd===0x09){ const m=p[1]===2?'keys24':(p[1]===1?'capsule':null); if(m) setMode(m); }
+    if(cmd===0x0A){ const lc=p[0]===1?2:(p[0]===2?4:0); if(lc){ setMode(lc===2?'capsule':'keys24'); defaultLights(lc); } }
+    if(cmd===0x09){ const lc=p[1]===1?2:(p[1]===2?4:0); if(lc){ setMode(lc===2?'capsule':'keys24'); defaultLights(lc); } }
   }else{
     const st=d[0]&0xF0;
     if(st===0x90&&d[2]>0){ playNote(d[1],d[2]); litKey(d[1],true); }
