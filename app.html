@@ -326,4 +326,11 @@ function buildGames(){
 
 //============ 初始化 ============//
 buildSongs(); buildGames(); buildLeftHand();
+
+//============ 开发期自动刷新（线上有更新就自动重载）============//
+(function(){ let last=null; setInterval(async()=>{ try{
+  const r=await fetch(location.href,{method:'HEAD',cache:'no-store'});
+  const tag=r.headers.get('etag')||r.headers.get('last-modified');
+  if(last&&tag&&tag!==last) location.reload(); last=tag;
+}catch(e){} },10000); })();
 </script>
