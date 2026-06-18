@@ -1,0 +1,239 @@
+<!--
+  PopuPiano 三设备通用调试台
+  目的：验证 胶囊(02) / 键盘(03) / 24键(04) 的输入与控灯，摸清左手硬件
+  协议见 docs/popupiano-protocol.md
+-->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>PopuPiano 调试台</title>
+
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; padding: 14px;
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #14161c; color: #f2f4f8; font-size: 15px;
+  }
+  h1 { font-size: 19px; margin: 0 0 10px; }
+  h2 { font-size: 15px; margin: 0 0 8px; }
+  #status {
+    padding: 9px 12px; border-radius: 9px; margin-bottom: 12px;
+    background: #2a2d36; line-height: 1.4; font-size: 14px;
+  }
+  #status.ok { background: #14532d; }
+  #status.err { background: #5c1a1a; }
+  button {
+    font-size: 14px; font-weight: 600; padding: 10px 12px; margin: 3px;
+    border: none; border-radius: 9px; color: #fff; background: #3b82f6;
+  }
+  button:active { transform: scale(0.96); }
+  button.connect { background: #16a34a; font-size: 17px; padding: 14px 22px; }
+  button.off  { background: #475569; }
+  button.warn { background: #b45309; }
+  button.mode { background: #7c3aed; }
+  .topbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 12px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+  .card { background: #1c1f27; border: 1px solid #2c2f3a; border-radius: 12px; padding: 12px; }
+  .card h2 .tag { font-size: 12px; color: #9aa3b2; font-weight: 400; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 6px; }
+  label { font-size: 13px; color: #b8c0cf; }
+  input[type=number] { width: 56px; font-size: 14px; padding: 7px; border-radius: 7px; border: 1px solid #3a3f4b; background: #11131a; color: #fff; }
+  /* 日志 */
+  #logwrap { margin-top: 14px; }
+  .logbar { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  #log {
+    height: 300px; overflow-y: auto; background: #0d0f14; border: 1px solid #2c2f3a;
+    border-radius: 10px; padding: 8px; font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; line-height: 1.5;
+  }
+  .le { padding: 2px 4px; border-radius: 4px; white-space: pre-wrap; word-break: break-all; }
+  .le .hex { color: #5b6472; }
+  .le.note { color: #60a5fa; }      /* 钢琴键输入 */
+  .le.sx   { color: #34d399; }      /* SysEx 输入 */
+  .le.tx   { color: #6b7280; }      /* 发送 */
+  .le.sys  { color: #fbbf24; }      /* 系统/未知 */
+  .le.info { color: #94a3b8; }
+</style>
+
+<h1>🎛 PopuPiano 三设备调试台</h1>
+<div id="status">未连接。点「连接」开始（蓝牙请先在系统设置配对，USB 直接插）。</div>
+
+<div class="topbar">
+  <button class="connect" onclick="connect()">连接</button>
+  <button onclick="queryDevice(3)">查询左手设备 (0x0A)</button>
+  <button onclick="battery(3)">查电量 (0x04)</button>
+</div>
+
+<div class="cards" id="cards"></div>
+
+<div id="logwrap">
+  <div class="logbar">
+    <h2 style="margin:0">📜 实时日志</h2>
+    <label><input type="checkbox" id="onlyIn"> 只看输入</label>
+    <button class="off" onclick="clearLog()">清空</button>
+  </div>
+  <div id="log"></div>
+</div>
+
+<script>
+//=================== 常量 ===================//
+const COMPONENTS = { 2: '胶囊', 3: '键盘', 4: '24键' };
+const DEFAULT_LAMPS = { 2: 9, 3: 29, 4: 24 };
+// 8 种 7-bit 颜色，传入调色板槽 1..8
+const PALETTE = [
+  [127,0,0],[127,40,0],[127,127,0],[0,127,0],
+  [0,127,127],[0,0,127],[80,0,127],[127,127,127]
+];
+
+let midi = null, out = null;
+
+//=================== 工具 ===================//
+const hx = b => b.toString(16).toUpperCase().padStart(2,'0');
+const hxs = a => a.map(hx).join(' ');
+const lampCount = c => parseInt(document.getElementById('n'+c).value) || DEFAULT_LAMPS[c];
+
+function log(cls, text, raw) {
+  if (document.getElementById('onlyIn').checked && (cls==='tx'||cls==='info')) return;
+  const el = document.getElementById('log');
+  const d = document.createElement('div');
+  d.className = 'le ' + cls;
+  const t = new Date().toLocaleTimeString('zh',{hour12:false}) ;
+  d.innerHTML = `[${t}] ${text}` + (raw ? `  <span class="hex">${hxs(raw)}</span>` : '');
+  el.appendChild(d);
+  while (el.children.length > 600) el.removeChild(el.firstChild);
+  el.scrollTop = el.scrollHeight;
+}
+function clearLog(){ document.getElementById('log').innerHTML=''; }
+function setStatus(m, cls=''){ const s=document.getElementById('status'); s.textContent=m; s.className=cls; }
+
+//=================== 连接 ===================//
+async function connect(){
+  if (!navigator.requestMIDIAccess){ setStatus('此浏览器不支持 Web MIDI，请用 Chrome。','err'); return; }
+  try{
+    setStatus('正在请求 MIDI 权限…（弹窗点允许）');
+    midi = await navigator.requestMIDIAccess({ sysex:true });
+    midi.onstatechange = e => { log('info', `端口变化: ${e.port.name} -> ${e.port.state}`); refreshPorts(); };
+    refreshPorts();
+    queryDevice(3); // 连上自动查一次左手设备
+  }catch(err){ setStatus('连接失败: '+err+'（多半没授权 SysEx）','err'); }
+}
+function refreshPorts(){
+  out = null;
+  for (const p of midi.outputs.values()){ if(/popupiano/i.test(p.name)){out=p;break;} if(!out)out=p; }
+  for (const p of midi.inputs.values()){ p.onmidimessage = onMidi; }
+  const ins = [...midi.inputs.values()].map(p=>p.name).join(', ') || '无';
+  if (!out && ins==='无'){ setStatus('没找到 MIDI 设备。蓝牙先配对 / USB 插好后重连。','err'); return; }
+  setStatus(`已连接 ✓  输出: ${out?out.name:'无'} | 输入: ${ins}`, 'ok');
+}
+
+//=================== 发送 ===================//
+function send(comp, payload){
+  const msg = [0xF0, comp, ...payload, 0xF7];
+  if (out) out.send(msg);
+  log('tx', `TX → ${COMPONENTS[comp]||comp}`, msg);
+}
+// 0x1E 上传调色板（offset=1 起）
+function uploadPalette(comp){
+  const flat = []; for (const [r,g,b] of PALETTE) flat.push(r,g,b);
+  send(comp, [0x1E, PALETTE.length, 0x01, ...flat]);
+  log('info', `已上传 ${PALETTE.length} 色调色板到 ${COMPONENTS[comp]}`);
+}
+// 0x20 紧凑亮灯  pairs=[[灯号,调色板号]]
+function light(comp, pairs){
+  const flat = []; for (const [id,p] of pairs) flat.push(id,p);
+  send(comp, [0x20, pairs.length, ...flat]);
+}
+// 0x21 游戏模式
+function gameMode(comp, on){ send(comp, [0x21, 0x00, on?0x01:0x00]); log('info', `${COMPONENTS[comp]} ${on?'进入':'退出'}游戏模式`); }
+// 0x0A 查询左手设备
+function queryDevice(comp){ send(comp, [0x0A, 0x00, 0x00]); }
+// 0x04 查电量
+function battery(comp){ send(comp, [0x04, 0x00, 0x00]); }
+
+//=================== 各设备动作 ===================//
+function allOn(comp){ const n=lampCount(comp); const ps=[]; for(let i=0;i<n;i++)ps.push([i,(i%8)+1]); light(comp,ps); }
+function allOff(comp){ const n=lampCount(comp); const ps=[]; for(let i=0;i<n;i++)ps.push([i,0]); light(comp,ps); }
+const chaseTimers = {};
+function chase(comp){
+  if (chaseTimers[comp]){ clearInterval(chaseTimers[comp]); chaseTimers[comp]=null; allOff(comp); return; }
+  const n=lampCount(comp); let pos=0;
+  chaseTimers[comp] = setInterval(()=>{ const ps=[]; for(let i=0;i<n;i++)ps.push([i, i===pos?8:0]); light(comp,ps); pos=(pos+1)%n; }, 140);
+}
+// 逐灯扫描：一次只亮一个，从 0 到 n-1，便于摸清灯的物理顺序
+function scan(comp){
+  const n=lampCount(comp); let i=0;
+  log('info', `${COMPONENTS[comp]} 逐灯扫描开始（0→${n-1}）`);
+  const t=setInterval(()=>{ if(i>=n){clearInterval(t);allOff(comp);log('info','扫描结束');return;} light(comp,[[i,((i%8)+1)]]); log('info',`点亮灯号 ${i}`); i++; }, 450);
+}
+// 测试 0x20 是否「未列出的灯熄灭」：先亮3号，1秒后单独亮8号，看3号是否还在
+function test20(comp){
+  log('info', `【0x20 增量测试】先亮 3 号灯…`);
+  light(comp,[[3,1]]);
+  setTimeout(()=>{ log('info','现在单独发命令亮 8 号灯：若 3 号灭=全量刷新，若 3 号还亮=增量'); light(comp,[[8,4]]); },1200);
+}
+function manual(comp){
+  const id=parseInt(document.getElementById('mid'+comp).value)||0;
+  const pal=parseInt(document.getElementById('mpal'+comp).value)||1;
+  light(comp,[[id,pal]]);
+}
+
+//=================== 解码输入 ===================//
+const OCT = {0x7E:'-2',0x7F:'-1',0:'0',1:'+1',2:'+2'};
+function onMidi(e){
+  const d=[...e.data];
+  if (d[0]===0xF0){
+    const comp=d[1], cmd=d[2], p=d.slice(3,d.length-1);
+    const name=COMPONENTS[comp]||('组件'+hx(comp));
+    let txt, cls='sx';
+    switch(cmd){
+      case 0x00: txt=`[${name}] 和弦按键按下  p1=${p[0]} p2=${p[1]}`; break;
+      case 0x01: txt=`[${name}] 音色按键按下  p1=${p[0]} p2=${p[1]}`; break;
+      case 0x05: txt=`[${name}] 八度更改 → ${OCT[p[1]]??p[1]}`; break;
+      case 0x04: txt=`[${name}] 电量/状态  Msb=${p[0]} Lsb=${p[1]} (≈${((p[0]<<7)|p[1])})`; cls='sys'; break;
+      case 0x09: txt=`[${name}] Pad连入状态 → ${({0:'未连接',1:'连接胶囊',2:'连接24键'})[p[1]]??p[1]}`; cls='sys'; break;
+      case 0x0A: txt=`[${name}] 设备上报应答 → 左手:${({0:'无',1:'胶囊',2:'24键'})[p[0]]??p[0]}`; cls='sys'; break;
+      case 0x0B: txt=`[${name}] PAD 上电上报`; cls='sys'; break;
+      default:   txt=`[${name}] 未知命令 0x${hx(cmd)}  参数=[${p.map(hx).join(' ')}]`; cls='sys';
+    }
+    log(cls, txt, d);
+  } else {
+    const st=d[0]&0xF0, ch=d[0]&0x0F;
+    if (st===0x90 && d[2]>0){ const idx=d[1]-48; log('note', `钢琴键按下  音符=${d[1]} (键号${idx>=0?idx:'?'}) 力度=${d[2]} ch=${ch}`, d); }
+    else if (st===0x80 || (st===0x90 && d[2]===0)){ log('note', `钢琴键松开  音符=${d[1]} ch=${ch}`, d); }
+    else if (st===0xB0){ log('sys', `控制器 CC#${d[1]}=${d[2]} ch=${ch}`, d); }
+    else { log('sys', `MIDI 0x${hx(d[0])}`, d); }
+  }
+}
+
+//=================== 渲染三个设备卡片 ===================//
+function renderCards(){
+  const wrap=document.getElementById('cards');
+  for (const c of [2,3,4]){
+    const card=document.createElement('div'); card.className='card';
+    card.innerHTML = `
+      <h2>${COMPONENTS[c]} <span class="tag">组件 0x0${c}</span></h2>
+      <div class="row">
+        <label>灯数</label><input type="number" id="n${c}" value="${DEFAULT_LAMPS[c]}">
+        <button class="mode" onclick="gameMode(${c},true)">进游戏模式</button>
+        <button class="mode off" onclick="gameMode(${c},false)">退出</button>
+      </div>
+      <div class="row">
+        <button onclick="uploadPalette(${c})">上传调色板</button>
+        <button onclick="allOn(${c})">🌈全亮</button>
+        <button class="off" onclick="allOff(${c})">熄灭</button>
+        <button onclick="chase(${c})">✨跑马灯</button>
+      </div>
+      <div class="row">
+        <button onclick="scan(${c})">🔢逐灯扫描</button>
+        <button class="warn" onclick="test20(${c})">🧪测0x20增量</button>
+      </div>
+      <div class="row">
+        <label>灯号</label><input type="number" id="mid${c}" value="0">
+        <label>调色板</label><input type="number" id="mpal${c}" value="1">
+        <button onclick="manual(${c})">点亮</button>
+      </div>`;
+    wrap.appendChild(card);
+  }
+}
+renderCards();
+</script>
