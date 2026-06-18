@@ -193,9 +193,9 @@
   <div class="overlay" id="settings">
     <div class="panel">
       <h2>⚙️ 设置</h2>
-      <div class="set-row"><span>设备连接</span><button class="btn blue" style="font-size:16px; padding:.5em 1.1em" onclick="fakeConnect()">连接钢琴</button></div>
-      <div class="set-row"><span>左手模式</span><div class="seg" id="modeSeg"><button class="sel" onclick="setMode('capsule',this)">胶囊和弦</button><button onclick="setMode('keys24',this)">24键</button></div></div>
-      <div class="set-row"><span>🔊 按键发声</span><div class="switch on" onclick="this.classList.toggle('on')"></div></div>
+      <div class="set-row"><span>设备连接</span><button class="btn blue" style="font-size:16px; padding:.5em 1.1em" onclick="connectPiano()">连接钢琴</button></div>
+      <div class="set-row"><span>左手模式</span><div class="seg" id="modeSeg"><button class="sel" data-mode="capsule" onclick="setMode('capsule')">胶囊和弦</button><button data-mode="keys24" onclick="setMode('keys24')">24键</button></div></div>
+      <div class="set-row"><span>🔊 按键发声</span><div class="switch on" onclick="this.classList.toggle('on'); soundOn=this.classList.contains('on')"></div></div>
       <div class="set-row" style="border:none"><span>🎵 背景音乐</span><div class="switch" onclick="this.classList.toggle('on')"></div></div>
       <div style="text-align:right; margin-top:16px"><button class="btn" onclick="closeSettings()">完成</button></div>
     </div>
@@ -213,16 +213,63 @@ function go(id){
 function openSettings(){ document.getElementById('settings').classList.add('active'); }
 function closeSettings(){ document.getElementById('settings').classList.remove('active'); }
 
-//============ 连接状态（占位）============//
+//============ 连接状态 ============//
 let connected=false;
-function setConn(on){ connected=on;
+function setConn(on,name){ connected=on;
   document.querySelectorAll('#d0,#d1').forEach(d=>d.classList.toggle('on',on));
-  document.querySelectorAll('#c0,#c1').forEach(t=>t.textContent=on?'已连接':'未连接'); }
-function fakeConnect(){ setConn(!connected); }
+  document.querySelectorAll('#c0,#c1').forEach(t=>t.textContent=on?(name?'已连接·'+name:'已连接'):'未连接'); }
+
+//============ 声音（Web Audio 离线合成）============//
+let audioCtx=null, soundOn=true;
+function initAudio(){ if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)(); if(audioCtx.state==='suspended') audioCtx.resume(); }
+function playNote(note,vel){ if(!audioCtx||!soundOn) return;
+  const f=440*Math.pow(2,(note-69)/12), t=audioCtx.currentTime, g=audioCtx.createGain();
+  const vol=Math.min(0.5,(vel/127)*0.5+0.12);
+  g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(vol,t+0.008); g.gain.exponentialRampToValueAtTime(0.0001,t+1.1); g.connect(audioCtx.destination);
+  [[f,'triangle',1],[f*2,'sine',0.4]].forEach(([fr,ty,a])=>{const o=audioCtx.createOscillator();o.type=ty;o.frequency.value=fr;const og=audioCtx.createGain();og.gain.value=a;o.connect(og);og.connect(g);o.start(t);o.stop(t+1.2);});
+}
+
+//============ 真·连接钢琴（Web MIDI）============//
+let midi=null, out=null;
+async function connectPiano(){
+  if(!navigator.requestMIDIAccess){ alert('此浏览器不支持 Web MIDI，请用 Chrome 打开'); return; }
+  try{
+    initAudio();
+    midi=await navigator.requestMIDIAccess({sysex:true});
+    midi.onstatechange=refreshPorts; refreshPorts();
+    send(3,[0x0A,0,0]);   // 查询左手设备，自动切模式
+    confirmFlash();        // 琴闪一下，确认双向连通
+  }catch(e){ setConn(false); alert('连接失败：'+e+'\n（多半未授予 MIDI/SysEx 权限）'); }
+}
+function refreshPorts(){
+  out=null; for(const p of midi.outputs.values()){ if(/popupiano/i.test(p.name)){out=p;break;} if(!out)out=p; }
+  for(const p of midi.inputs.values()) p.onmidimessage=onMidi;
+  const inName=[...midi.inputs.values()].map(p=>p.name)[0]||'';
+  setConn(!!(out||inName), ((out&&out.name)||inName||'').replace(/popupiano/i,'PopuPiano').slice(0,12));
+}
+function send(comp,payload){ if(out) out.send([0xF0,comp,...payload,0xF7]); }
+function uploadPalette(comp){ const P=[[127,0,0],[127,127,0],[0,127,0],[0,127,127],[0,0,127],[80,0,127],[127,127,127]]; const f=[]; P.forEach(c=>f.push(...c)); send(comp,[0x1E,P.length,1,...f]); }
+function lightAll(comp,n){ const ps=[]; for(let i=0;i<n;i++)ps.push(i,(i%7)+1); send(comp,[0x20,n,...ps]); }
+function allOff(comp,n){ const ps=[]; for(let i=0;i<n;i++)ps.push(i,0); send(comp,[0x20,n,...ps]); }
+function confirmFlash(){ try{ uploadPalette(3); lightAll(3,29); setTimeout(()=>allOff(3,29),700); }catch(e){} }
+
+//============ 接收：解码 + 发声 + 屏幕点灯 ============//
+function onMidi(e){
+  const d=[...e.data];
+  if(d[0]===0xF0){
+    const cmd=d[2], p=d.slice(3,d.length-1);
+    if(cmd===0x0A){ const m=p[0]===2?'keys24':(p[0]===1?'capsule':null); if(m) setMode(m); }
+    if(cmd===0x09){ const m=p[1]===2?'keys24':(p[1]===1?'capsule':null); if(m) setMode(m); }
+  }else{
+    const st=d[0]&0xF0;
+    if(st===0x90&&d[2]>0){ playNote(d[1],d[2]); litKey(d[1],true); }
+    else if(st===0x80||(st===0x90&&d[2]===0)){ litKey(d[1],false); }
+  }
+}
 
 //============ 左手模式 ============//
 let mode='capsule';
-function setMode(m,btn){ mode=m; document.querySelectorAll('#modeSeg button').forEach(b=>b.classList.remove('sel')); btn.classList.add('sel'); buildLeftHand(); }
+function setMode(m){ mode=m; document.querySelectorAll('#modeSeg button').forEach(b=>b.classList.toggle('sel', b.dataset.mode===m)); buildLeftHand(); }
 function buildLeftHand(){
   const grid=document.getElementById('padGrid'), title=document.getElementById('leftTitle'); grid.innerHTML='';
   if(mode==='capsule'){ title.textContent='左手 · 胶囊和弦'; grid.style.gridTemplateColumns='repeat(3,1fr)';
