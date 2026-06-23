@@ -324,12 +324,12 @@ function clearAllLights() {
   state.litNotes.clear();
 }
 
+const NB_SLOT = { 60:1, 62:2, 64:3, 65:5, 67:6, 69:2, 71:7, 72:1, 74:2 }; // 音符→PopuPiano 调色板槽
 function sendMidiLight(note, velocity) {
   const data = NOTE_DATA[note];
   if (!data) return;
-  state.midiOutputs.forEach(output => {
-    try { output.send([velocity ? 0x90 : 0x80, data.midi, velocity]); } catch (_) {}
-  });
+  const lamp = data.midi - 48;            // PopuPiano 29：lamp = MIDI - 48
+  if (velocity) PP29.set(lamp, NB_SLOT[data.midi] || 3); else PP29.clear(lamp);
 }
 
 async function connectMidi() {
@@ -338,7 +338,7 @@ async function connectMidi() {
     return;
   }
   try {
-    state.midi = await navigator.requestMIDIAccess({ sysex: false });
+    state.midi = await navigator.requestMIDIAccess({ sysex: true });
     attachMidiDevices();
     state.midi.onstatechange = attachMidiDevices;
   } catch (_) {
@@ -349,6 +349,7 @@ async function connectMidi() {
 function attachMidiDevices() {
   const inputs = [...state.midi.inputs.values()];
   state.midiOutputs = [...state.midi.outputs.values()];
+  PP29.setOuts(state.midiOutputs);        // 接入 PopuPiano 29 控灯
   inputs.forEach(input => {
     input.onmidimessage = ({ data }) => {
       const [status, midi, velocity] = data;

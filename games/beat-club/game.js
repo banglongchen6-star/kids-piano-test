@@ -194,35 +194,21 @@ function encodeColor(value) {
 }
 
 function enterLedMode() {
-  midiOutputs.forEach(output =>
-    output.send([...PARTYKEYS_HEADER, 0x0F, 0x01, 0xF7])
-  );
+  // PopuPiano 29 无需进入 LED 模式；调色板由 PP29.setOuts 自动上传
 }
 
 function setHardwareLeds(groups) {
-  if (!midiOutputs.length) return;
-  const message = [...PARTYKEYS_HEADER, 0x15, groups.length];
-  groups.forEach(group => {
-    const indices = group.notes.map(note => note - PARTYKEYS_MIN_NOTE);
-    message.push(
-      ...encodeColor(group.rgb[0]),
-      ...encodeColor(group.rgb[1]),
-      ...encodeColor(group.rgb[2]),
-      indices.length,
-      ...indices
-    );
-  });
-  message.push(0xF7);
-  midiOutputs.forEach(output => output.send(message));
+  if (!groups || !groups.length) { PP29.allOff(); return; }
+  const lamps = [];
+  groups.forEach(group => group.notes.forEach(note => lamps.push(note - PARTYKEYS_MIN_NOTE)));
+  PP29.lightRGB(lamps, groups[0].rgb);    // 用和弦颜色点亮对应 lamp
 }
 
 function lightsOff() {
   document.querySelectorAll(".key").forEach(key =>
     key.classList.remove("lit", "test-lit")
   );
-  midiOutputs.forEach(output =>
-    output.send([...PARTYKEYS_HEADER, 0x71, 0x00, 0xF7])
-  );
+  PP29.allOff();
 }
 
 function lightChord(chord) {
@@ -236,10 +222,11 @@ function lightChord(chord) {
 function refreshMidi() {
   const allInputs = [...midiAccess.inputs.values()];
   const allOutputs = [...midiAccess.outputs.values()];
-  midiInputs = allInputs.filter(input => /partykey/i.test(input.name || ""));
-  midiOutputs = allOutputs.filter(output => /partykey/i.test(output.name || ""));
+  midiInputs = allInputs.filter(input => /popupiano|partykey/i.test(input.name || ""));
+  midiOutputs = allOutputs.filter(output => /popupiano|partykey/i.test(output.name || ""));
   if (!midiInputs.length && allInputs.length === 1) midiInputs = allInputs;
   if (!midiOutputs.length && allOutputs.length === 1) midiOutputs = allOutputs;
+  PP29.setOuts(midiOutputs);              // 接入 PopuPiano 29 控灯
   midiInputs.forEach(input => input.onmidimessage = handleMidi);
   if (midiInputs.length && midiOutputs.length) enterLedMode();
   return midiInputs.length > 0 && midiOutputs.length > 0;

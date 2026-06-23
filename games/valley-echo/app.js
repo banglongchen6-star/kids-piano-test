@@ -430,11 +430,12 @@
       return;
     }
     try {
-      state.midi = await navigator.requestMIDIAccess({ sysex: false });
+      state.midi = await navigator.requestMIDIAccess({ sysex: true });
       const inputs = [...state.midi.inputs.values()];
       const outputs = [...state.midi.outputs.values()];
       inputs.forEach(input => input.onmidimessage = onMidiMessage);
-      state.midiOutput = outputs.find(o => /partykeys/i.test(o.name)) || outputs[0] || null;
+      PP29.attach(state.midi);                                   // 接入 PopuPiano 29 控灯
+      state.midiOutput = PP29.outs[0] || outputs[0] || null;
       els.midi.classList.toggle("connected", inputs.length > 0 || !!state.midiOutput);
       els.midi.innerHTML = `<span class="midi-light"></span>${state.midiOutput ? "PartyKeys" : inputs.length ? "MIDI 输入" : "未发现设备"}`;
       showSpeech(inputs.length || outputs.length ? "MIDI 已连接，山谷听得到实体键盘啦！" : "没有发现 MIDI 设备，虚拟键盘仍然可以正常玩。");
@@ -448,46 +449,40 @@
     const [status, note, velocity] = event.data;
     const command = status & 0xf0;
     if (command === 0x90 && velocity > 0) {
-      const index = note - 60;
+      const index = note - 48;          // PopuPiano 29 最左键 MIDI48 → index0
       if (state.mode === "piano" && index >= 0 && index < 24) handleInput(index, "midi");
     }
   }
 
+  const VE_KIDS_LAMP = [2, 7, 12, 17, 22, 27];   // 低幼 6 垫映射到 29 键上 6 个分散的灯
   function sendMidiLight(index, velocity = 80, duration = 250) {
     if (!state.midiOutput) return;
-    const note = state.mode === "kids" ? 36 + index : 60 + index;
-    try {
-      state.midiOutput.send([0x90, note, velocity]);
-      later(() => {
-        try { state.midiOutput.send([0x80, note, 0]); } catch {}
-      }, duration);
-    } catch {}
+    const lamp = state.mode === "kids" ? VE_KIDS_LAMP[index] : index;  // 钢琴：lamp = index(0-23)
+    if (lamp == null) return;
+    const slot = state.mode === "kids" ? (index % 7) + 1 : 3;
+    PP29.set(lamp, slot);
+    later(() => PP29.clear(lamp), duration);
   }
 
   function clearAllLights() {
     if (!state.midiOutput) return;
-    try {
-      for (let note = 0; note < 128; note++) state.midiOutput.send([0x80, note, 0]);
-      for (let ch = 0; ch < 16; ch++) state.midiOutput.send([0xb0 + ch, 123, 0]);
-    } catch {}
+    PP29.allOff();
   }
 
   function rewardLights() {
     if (!state.midiOutput) return;
-    const notes = state.mode === "kids" ? [36,37,38,39,40,41] : Array.from({length:24}, (_,i) => 60+i);
-    notes.forEach((note, i) => later(() => {
-      try {
-        state.midiOutput.send([0x90, note, 72]);
-        later(() => { try { state.midiOutput.send([0x80, note, 0]); } catch {} }, 180);
-      } catch {}
+    const lamps = state.mode === "kids" ? VE_KIDS_LAMP : Array.from({length:24}, (_,i) => i);
+    lamps.forEach((lamp, i) => later(() => {
+      PP29.set(lamp, 3);
+      later(() => PP29.clear(lamp), 180);
     }, i * 55));
-    later(clearAllLights, notes.length * 55 + 350);
+    later(clearAllLights, lamps.length * 55 + 350);
   }
 
   function softWhiteHint() {
     if (!state.midiOutput) return;
-    const notes = state.mode === "kids" ? [36,37,38,39,40,41] : [60,62,64,65,67,69,71,72,74,76,77,79,81,83];
-    notes.forEach(note => { try { state.midiOutput.send([0x90, note, 22]); } catch {} });
+    const lamps = state.mode === "kids" ? VE_KIDS_LAMP : [0,2,4,5,7,9,11,12,14,16,17,19,21,23];
+    PP29.setMany(lamps, 7);
     later(clearAllLights, 500);
   }
 
