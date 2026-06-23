@@ -55,7 +55,7 @@ let section=0; const theme=()=>THEMES[Math.floor(section)%3];
 // ===== 谱面 =====
 const BASE=48;
 const MELODY=[60,64,67,72,71,67,64,67,62,65,69,74,72,69,65,62];
-const BPM=100, BEAT=60000/BPM, LEAD_IN=2600, LIGHT_LEAD=760, TOTAL=64;
+const BPM=100, BEAT=60000/BPM, LEAD_IN=2400, LIGHT_LEAD=760, TOTAL=64;
 let chart=[];
 const laneOf=i=>0.52*Math.sin(i*0.85)+0.16*Math.sin(i*1.9);   // 蜿蜒
 function buildChart(){ chart=[]; for(let i=0;i<TOTAL;i++) chart.push({note:MELODY[i%MELODY.length], lane:laneOf(i), hit:LEAD_IN+i*BEAT, judged:false, lit:false, spiral:i%4===0}); }
@@ -65,15 +65,36 @@ let running=false, startT=0, now=0, raf=0;
 let score=0, combo=0, maxCombo=0, judged=0;
 let debris=[], hopT=-1e9, flash={txt:'',mult:'',t:-1e9,color:'#fff'}, midiAccess=null;
 
-// ===== 音频 =====
-let actx=null, lastBeat=-1;
-function initAudio(){ if(!actx) actx=new (window.AudioContext||window.webkitAudioContext)(); if(actx.state==='suspended') actx.resume(); }
-function tone(m,dur=.5,type='triangle',vol=.18){ if(!actx)return; const f=440*2**((m-69)/12),t=actx.currentTime,g=actx.createGain();
-  g.gain.setValueAtTime(.0001,t); g.gain.exponentialRampToValueAtTime(vol,t+.01); g.gain.exponentialRampToValueAtTime(.0001,t+dur); g.connect(actx.destination);
+// ===== 原创音频引擎（合成波/EDM：鼓 + 贝斯 + 琶音）=====
+let actx=null, master=null, noiseBuf=null;
+function initAudio(){ if(!actx){ actx=new (window.AudioContext||window.webkitAudioContext)(); master=actx.createGain(); master.gain.value=.8; master.connect(actx.destination);
+    noiseBuf=actx.createBuffer(1,actx.sampleRate*0.3,actx.sampleRate); const d=noiseBuf.getChannelData(0); for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1; }
+  if(actx.state==='suspended') actx.resume(); }
+// 玩家命中的明亮音
+function tone(m,dur=.5,type='triangle',vol=.2){ if(!actx)return; const f=440*2**((m-69)/12),t=actx.currentTime,g=actx.createGain();
+  g.gain.setValueAtTime(.0001,t); g.gain.exponentialRampToValueAtTime(vol,t+.01); g.gain.exponentialRampToValueAtTime(.0001,t+dur); g.connect(master);
   [[f,type,1],[f*2,'sine',.35]].forEach(([fr,ty,a])=>{const o=actx.createOscillator();o.type=ty;o.frequency.value=fr;const og=actx.createGain();og.gain.value=a;o.connect(og);og.connect(g);o.start(t);o.stop(t+dur+.05);}); }
-function bass(m){ if(!actx)return; const f=440*2**((m-69)/12)/2,t=actx.currentTime,g=actx.createGain();
-  g.gain.setValueAtTime(.0001,t); g.gain.exponentialRampToValueAtTime(.12,t+.02); g.gain.exponentialRampToValueAtTime(.0001,t+.28);
-  const o=actx.createOscillator();o.type='sine';o.frequency.value=f;o.connect(g);g.connect(actx.destination);o.start(t);o.stop(t+.32); }
+function kick(t){ const o=actx.createOscillator(),g=actx.createGain(); o.frequency.setValueAtTime(135,t); o.frequency.exponentialRampToValueAtTime(45,t+.12);
+  g.gain.setValueAtTime(.6,t); g.gain.exponentialRampToValueAtTime(.001,t+.2); o.connect(g); g.connect(master); o.start(t); o.stop(t+.22); }
+function hat(t,open){ const s=actx.createBufferSource(); s.buffer=noiseBuf; const hp=actx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=7500; const g=actx.createGain(); const dur=open?.12:.04;
+  g.gain.setValueAtTime(open?.1:.16,t); g.gain.exponentialRampToValueAtTime(.001,t+dur); s.connect(hp); hp.connect(g); g.connect(master); s.start(t); s.stop(t+dur+.03); }
+function snare(t){ const s=actx.createBufferSource(); s.buffer=noiseBuf; const bp=actx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1900; const g=actx.createGain();
+  g.gain.setValueAtTime(.3,t); g.gain.exponentialRampToValueAtTime(.001,t+.16); s.connect(bp); bp.connect(g); g.connect(master); s.start(t); s.stop(t+.18); }
+function synth(m,t,dur,vol,type){ const f=440*2**((m-69)/12),o=actx.createOscillator(),g=actx.createGain(); o.type=type||'sawtooth'; o.frequency.value=f;
+  g.gain.setValueAtTime(.0001,t); g.gain.exponentialRampToValueAtTime(vol,t+.012); g.gain.exponentialRampToValueAtTime(.0001,t+dur); o.connect(g); g.connect(master); o.start(t); o.stop(t+dur+.03); }
+// 步进音序器（8 分音符）：贝斯走 Am-F-C-G
+const PROG=[57,53,48,55];
+let musicOn=false, stepIdx=0, nextStepT=0, schedTimer=null;
+function startMusic(){ if(!actx)return; musicOn=true; stepIdx=0; nextStepT=actx.currentTime+0.06; clearInterval(schedTimer);
+  schedTimer=setInterval(()=>{ if(!musicOn)return; const sd=(BEAT/1000)/2; while(nextStepT<actx.currentTime+0.12){ playStep(stepIdx,nextStepT); stepIdx++; nextStepT+=sd; } },25); }
+function stopMusic(){ musicOn=false; clearInterval(schedTimer); }
+function playStep(i,t){ const inBar=i%8, bar=Math.floor(i/8)%4, root=PROG[bar];
+  if(inBar%2===0) kick(t);
+  hat(t, inBar%2===1);
+  if(inBar===2||inBar===6) snare(t);
+  if(inBar===0||inBar===3||inBar===4||inBar===6) synth(root-12,t,.2,.1,'sine');     // 贝斯
+  if(inBar%2===0){ const beat=Math.floor(i/2); synth(MELODY[beat%MELODY.length],t,.26,.07,'sawtooth'); } // 主旋律琶音
+}
 
 // ===== MIDI =====
 async function connectMidi(){ const st=document.getElementById('status');
@@ -109,10 +130,9 @@ const lerp=(a,b,t)=>a+(b-a)*t;
 const pos=()=>(now-LEAD_IN)/BEAT;
 
 // ===== 主循环 =====
-function start(){ buildChart(); running=true; startT=performance.now(); score=combo=maxCombo=judged=0; section=0; debris=[]; lastBeat=-1;
+function start(){ buildChart(); running=true; startT=performance.now(); score=combo=maxCombo=judged=0; section=0; debris=[]; startMusic();
   document.getElementById('startScreen').classList.add('hidden'); document.getElementById('endScreen').classList.add('hidden'); cancelAnimationFrame(raf); loop(); }
 function loop(){ now=performance.now()-startT;
-  const b=Math.floor((now-LEAD_IN)/BEAT); if(b>=0&&b!==lastBeat){ lastBeat=b; bass([48,48,53,55][b%4]); }
   for(const t of chart){ if(t.judged)continue; if(!t.lit&&t.hit-now<LIGHT_LEAD&&t.hit-now>-200){ PP29.set(t.note-BASE,1+(t.note%6)); t.lit=true; } if(now-t.hit>360) missTile(t); }
   if(judged>=TOTAL){ running=false; return end(); }
   debris.forEach(d=>{ d.x+=d.vx; d.y+=d.vy; d.vy+=.5; d.rot+=d.vr; d.life-=.022; }); debris=debris.filter(d=>d.life>0);
@@ -177,7 +197,7 @@ function drawHud(th){ ctx.save(); ctx.textAlign='center';
     ctx.fillStyle='#ff7ce0'; ctx.font='800 '+Math.min(W,H)*0.038+'px sans-serif'; ctx.fillText(flash.mult,W/2,H*0.325); ctx.globalAlpha=1; ctx.shadowBlur=0; } ctx.restore(); }
 
 // ===== 结束 / 输入 =====
-function end(){ PP29.allOff(); document.getElementById('endScore').textContent=score; document.getElementById('endCombo').textContent=maxCombo;
+function end(){ stopMusic(); PP29.allOff(); document.getElementById('endScore').textContent=score; document.getElementById('endCombo').textContent=maxCombo;
   const rate=score/(TOTAL*60*2); document.getElementById('endRank').textContent=rate>.7?'S':rate>.5?'A':rate>.3?'B':'C'; document.getElementById('endScreen').classList.remove('hidden'); }
 addEventListener('keydown',e=>{ if(e.code==='Space'){ e.preventDefault(); hit(null);} });
 cv.addEventListener('pointerdown',()=>hit(null));
