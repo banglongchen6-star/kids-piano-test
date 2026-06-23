@@ -1,0 +1,240 @@
+<!--
+  霓虹跳跳 (Neon Hop) — 合成波节奏跟弹游戏
+  音符方块顺光路飞来，对应 29 键亮灯，踩节拍按对应键 → PERFECT + 连击 + 角色跳跃
+  主题随段落切换：绿 / 橙 / 蓝（对应参考画面）
+  控灯走 PopuPiano 29：../pp29.js
+-->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>霓虹跳跳</title>
+<style>
+  *{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; user-select:none;}
+  html,body{height:100%; overflow:hidden; background:#04060f; font-family:-apple-system,"PingFang SC",sans-serif;}
+  #c{display:block; width:100vw; height:100vh; touch-action:none;}
+  .overlay{position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:18px; color:#fff; text-align:center; background:rgba(4,6,15,.72); z-index:10;}
+  .overlay.hidden{display:none;}
+  .title{font-size:clamp(34px,7vw,64px); font-weight:900; letter-spacing:3px;
+    text-shadow:0 0 18px #34e0ff,0 0 36px #b15bff;}
+  .big{font-size:clamp(40px,9vw,80px); font-weight:900; color:#ff7ce0; text-shadow:0 0 22px #ff7ce0;}
+  .sub{font-size:clamp(14px,2.4vw,20px); opacity:.85;}
+  button{font-size:clamp(18px,3vw,26px); font-weight:800; color:#04060f; border:none; border-radius:999px;
+    padding:.6em 1.6em; background:#5fe0a0; box-shadow:0 0 24px #5fe0a0aa; cursor:pointer;}
+  button:active{transform:scale(.96);} button.alt{background:#7cc6ff; box-shadow:0 0 24px #7cc6ffaa;}
+  .status{font-size:13px; opacity:.7; min-height:1em;}
+</style>
+
+<canvas id="c"></canvas>
+
+<div class="overlay" id="startScreen">
+  <div class="title">霓虹跳跳</div>
+  <div class="sub">音符飞来 · 琴键亮灯 · 踩着节拍按下去 🎵</div>
+  <button id="btnConnect">连接钢琴并开始</button>
+  <button class="alt" id="btnSolo">无设备试玩（按空格）</button>
+  <div class="status" id="status"></div>
+</div>
+
+<div class="overlay hidden" id="endScreen">
+  <div class="big" id="endScore">0</div>
+  <div class="sub">最高连击 <span id="endCombo">0</span> · 评级 <span id="endRank">A</span></div>
+  <button id="btnAgain">再来一次</button>
+</div>
+
+<script src="../pp29.js"></script>
+<script>
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+let W, H, DPR;
+function resize(){ DPR = Math.min(2, window.devicePixelRatio||1); W = cv.clientWidth; H = cv.clientHeight;
+  cv.width = W*DPR; cv.height = H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0); }
+window.addEventListener('resize', resize); resize();
+
+// ---------- 主题（绿/橙/蓝，对应参考画面）----------
+const THEMES = [
+  { sky:['#0a2a1e','#04140f'], sun:'#7CF06A', accent:'#5fe0a0', tile:'#39d98a', grid:'rgba(110,240,150,.30)', glow:'#79ffb0' },
+  { sky:['#3a1405','#160603'], sun:'#FFB23E', accent:'#ff9a3c', tile:'#ff8a3c', grid:'rgba(255,150,80,.30)',  glow:'#ffd089' },
+  { sky:['#0a1a3a','#05101f'], sun:'#5BB8FF', accent:'#7cc6ff', tile:'#49a6ff', grid:'rgba(90,170,255,.30)',  glow:'#a9d8ff' },
+];
+function theme(){ return THEMES[Math.floor(section)%3]; }
+
+// ---------- 音乐 / 谱面 ----------
+const BASE = 48;                                   // PopuPiano 29 最左键 MIDI
+const MELODY = [60,64,67,72, 71,67,64,67, 62,65,69,74, 72,69,65,62];  // 均在 48-76 内
+const BPM = 102, BEAT = 60000/BPM, STEP = BEAT;    // 一拍一个音
+const TRAVEL = 2100;                               // 方块从地平线到判定线用时(ms)
+const LIGHT_LEAD = 720;                            // 提前多久点亮琴键
+const LEAD_IN = 2400;                              // 开场预备
+const TOTAL = 64;                                  // 总音符数
+let chart = [];
+function buildChart(){ chart = []; for(let i=0;i<TOTAL;i++) chart.push({ note: MELODY[i%MELODY.length], hit: LEAD_IN + i*STEP, judged:false, lit:false }); }
+
+// ---------- 状态 ----------
+let running=false, startT=0, now=0, raf=0;
+let score=0, combo=0, maxCombo=0, judged=0, section=0;
+let particles=[], hopT=-999, flash={txt:'', mult:'', t:-999, color:'#fff'};
+let midiAccess=null;
+
+// ---------- 音频 ----------
+let actx=null;
+function initAudio(){ if(!actx) actx=new (window.AudioContext||window.webkitAudioContext)(); if(actx.state==='suspended') actx.resume(); }
+function tone(midi, dur=.5, type='triangle', vol=.18){ if(!actx) return;
+  const f=440*Math.pow(2,(midi-69)/12), t=actx.currentTime, g=actx.createGain();
+  g.gain.setValueAtTime(.0001,t); g.gain.exponentialRampToValueAtTime(vol,t+.01); g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+  g.connect(actx.destination);
+  [[f,type,1],[f*2,'sine',.35]].forEach(([fr,ty,a])=>{ const o=actx.createOscillator(); o.type=ty; o.frequency.value=fr; const og=actx.createGain(); og.gain.value=a; o.connect(og); og.connect(g); o.start(t); o.stop(t+dur+.05); });
+}
+function bass(midi){ if(!actx) return; const f=440*Math.pow(2,(midi-69)/12)/2, t=actx.currentTime, g=actx.createGain();
+  g.gain.setValueAtTime(.0001,t); g.gain.exponentialRampToValueAtTime(.12,t+.02); g.gain.exponentialRampToValueAtTime(.0001,t+.28);
+  const o=actx.createOscillator(); o.type='sine'; o.frequency.value=f; o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t+.32); }
+let lastBeat=-1;
+
+// ---------- MIDI ----------
+async function connectMidi(){
+  const st=document.getElementById('status');
+  if(!navigator.requestMIDIAccess){ st.textContent='此浏览器不支持 Web MIDI，请用 Chrome。改用空格试玩。'; return false; }
+  try{
+    midiAccess = await navigator.requestMIDIAccess({sysex:true});
+    [...midiAccess.inputs.values()].forEach(i=>i.onmidimessage=onMidi);
+    midiAccess.onstatechange=()=>{ [...midiAccess.inputs.values()].forEach(i=>i.onmidimessage=onMidi); PP29.attach(midiAccess); };
+    PP29.attach(midiAccess);
+    return true;
+  }catch(e){ st.textContent='未获得 MIDI 权限，可用空格试玩。'; return false; }
+}
+function onMidi(e){ const [s,n,v]=e.data; if((s&0xf0)===0x90 && v>0) hit(n); }
+
+// ---------- 判定 ----------
+function hit(note){
+  if(!running) return;
+  let best=null, bestD=9999;
+  for(const t of chart){ if(t.judged) continue; const d=Math.abs(t.hit-now); if(d>360) continue;
+    if(note!=null && t.note!==note) continue;       // 来自琴键：要求音高也对
+    if(d<bestD){ bestD=d; best=t; } }
+  if(!best) return;
+  best.judged=true; judged++;
+  if(best.lit){ PP29.clear(best.note-BASE); best.lit=false; }
+  tone(best.note,.5);
+  const x=W/2, y=H*0.80;
+  if(bestD<130){ score+=Math.round(50*mult()); combo++; popFlash('PERFECT', theme().glow); burst(x,y,18); }
+  else { score+=Math.round(20*mult()); combo++; popFlash('GOOD', '#fff7a0'); burst(x,y,10); }
+  maxCombo=Math.max(maxCombo,combo); hopT=now;
+  section=Math.floor(judged/16);
+}
+function mult(){ return Math.min(4, 1+Math.floor(combo/8)); }
+function miss(t){ t.judged=true; judged++; combo=0; if(t.lit){ PP29.clear(t.note-BASE); t.lit=false; } popFlash('MISS','#ff6b8a'); section=Math.floor(judged/16); }
+function popFlash(txt,color){ flash={txt, mult:'x'+mult(), t:now, color}; }
+
+// ---------- 粒子 ----------
+function burst(x,y,n){ for(let i=0;i<n;i++){ const a=Math.random()*6.28, sp=2+Math.random()*5;
+  particles.push({x,y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp-3, life:1, c: Math.random()<.5?theme().glow:'#ffffff'}); } }
+
+// ---------- 主循环 ----------
+function start(){
+  buildChart(); running=true; startT=performance.now();
+  score=0; combo=0; maxCombo=0; judged=0; section=0; particles=[]; lastBeat=-1;
+  document.getElementById('startScreen').classList.add('hidden');
+  document.getElementById('endScreen').classList.add('hidden');
+  cancelAnimationFrame(raf); loop();
+}
+function loop(){
+  now = performance.now()-startT;
+  // 节奏低音
+  const b=Math.floor((now-LEAD_IN)/BEAT); if(b>=0 && b!==lastBeat){ lastBeat=b; bass([48,48,53,55][b%4]); }
+  // 点灯 + 漏判
+  for(const t of chart){
+    if(t.judged) continue;
+    if(!t.lit && t.hit-now < LIGHT_LEAD && t.hit-now > -200){ PP29.set(t.note-BASE, 1+(t.note%6)); t.lit=true; }
+    if(now - t.hit > 360) miss(t);
+  }
+  // 结束
+  if(judged>=TOTAL){ running=false; return end(); }
+  update(); render();
+  raf=requestAnimationFrame(loop);
+}
+function update(){ particles.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.vy+=.32; p.life-=.026; }); particles=particles.filter(p=>p.life>0); }
+
+// ---------- 渲染 ----------
+const horizonF=0.40, hitF=0.80, cx=()=>W/2;
+function render(){
+  const th=theme(); const hY=H*horizonF, jY=H*hitF;
+  // 天空
+  const g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,th.sky[0]); g.addColorStop(.4,th.sky[1]); g.addColorStop(1,'#04060f');
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  // 太阳
+  ctx.save(); ctx.globalAlpha=.95; const sr=Math.min(W,H)*0.12, sx=W/2, sy=hY-sr*0.55;
+  const sg=ctx.createRadialGradient(sx,sy,sr*0.2,sx,sy,sr); sg.addColorStop(0,'#fff'); sg.addColorStop(.4,th.sun); sg.addColorStop(1,th.sun+'00');
+  ctx.fillStyle=sg; ctx.beginPath(); ctx.arc(sx,sy,sr,0,6.29); ctx.fill();
+  ctx.fillStyle=th.sky[1]; for(let i=0;i<5;i++){ const yy=sy-sr*0.2+i*sr*0.28; ctx.fillRect(sx-sr,yy,sr*2,sr*0.12); } ctx.restore();
+  // 椰树剪影
+  palms(th, hY);
+  // 地平线发光
+  ctx.fillStyle=th.accent; ctx.globalAlpha=.5; ctx.fillRect(0,hY-1.5,W,3); ctx.globalAlpha=1;
+  // 合成波网格地面
+  grid(th, hY);
+  // 光路
+  road(th, hY, jY);
+  // 音符方块
+  for(const t of chart){ if(t.judged) continue; let p=(now-(t.hit-TRAVEL))/TRAVEL; if(p<=0||p>1.08) continue; drawTile(th,p); }
+  // 角色
+  drawHero(th, jY);
+  // 粒子
+  particles.forEach(p=>{ ctx.globalAlpha=Math.max(0,p.life); ctx.fillStyle=p.c; ctx.beginPath(); ctx.arc(p.x,p.y,3.2,0,6.29); ctx.fill(); }); ctx.globalAlpha=1;
+  // HUD
+  hud(th);
+}
+function palms(th,hY){ ctx.save(); ctx.strokeStyle=th.sky[1]; ctx.fillStyle='rgba(0,0,0,.55)';
+  [[W*0.12,1],[W*0.88,-1],[W*0.04,1],[W*0.96,-1]].forEach(([x,d],i)=>{ const h=H*0.16*(i<2?1:.7); ctx.lineWidth=4; ctx.beginPath(); ctx.moveTo(x,hY); ctx.lineTo(x+d*6,hY-h); ctx.stroke();
+    for(let k=-2;k<=2;k++){ ctx.beginPath(); ctx.moveTo(x+d*6,hY-h); ctx.quadraticCurveTo(x+d*6+k*14,hY-h-18,x+d*6+k*26,hY-h+6); ctx.stroke(); } }); ctx.restore(); }
+function grid(th,hY){ ctx.save(); ctx.strokeStyle=th.grid; ctx.lineWidth=1.5;
+  for(let i=-10;i<=10;i++){ const fx=W/2+i*(W*0.06); ctx.beginPath(); ctx.moveTo(W/2+i* (W*0.02), hY); ctx.lineTo(fx*1.0 + (fx-W/2)*2.2, H); ctx.stroke(); }
+  const scroll=(now/ -16)% 40; for(let j=0;j<14;j++){ const t=(j*40+scroll)/ (14*40); const y=hY+(H-hY)*t*t; ctx.globalAlpha=.5*(1-t)+.15; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); } ctx.restore(); }
+function road(th,hY,jY){ ctx.save(); const topW=W*0.04, botW=W*0.30, cX=W/2;
+  const grd=ctx.createLinearGradient(0,hY,0,jY+40); grd.addColorStop(0,th.tile+'10'); grd.addColorStop(1,th.tile+'44');
+  ctx.fillStyle=grd; ctx.beginPath(); ctx.moveTo(cX-topW,hY); ctx.lineTo(cX+topW,hY); ctx.lineTo(cX+botW,jY+50); ctx.lineTo(cX-botW,jY+50); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle=th.accent; ctx.lineWidth=2; ctx.globalAlpha=.7; ctx.stroke(); ctx.restore(); }
+function tileXY(p){ const hY=H*horizonF, jY=H*hitF; const e=Math.pow(p,1.7); return { x:W/2, y:hY+(jY-hY)*e, s:0.18+0.95*e }; }
+function drawTile(th,p){ const {x,y,s}=tileXY(p); const sz=Math.min(W,H)*0.085*s; ctx.save(); ctx.globalAlpha=Math.min(1,p*3);
+  ctx.translate(x,y); ctx.shadowColor=th.glow; ctx.shadowBlur=24*s;
+  ctx.fillStyle=th.tile; roundRect(-sz, -sz*0.6, sz*2, sz*1.2, 10*s); ctx.fill();
+  ctx.shadowBlur=0; ctx.fillStyle='rgba(255,255,255,.92)'; ctx.beginPath();
+  ctx.moveTo(0,-sz*0.34); ctx.lineTo(sz*0.42,0); ctx.lineTo(0,sz*0.34); ctx.lineTo(-sz*0.42,0); ctx.closePath(); ctx.fill(); ctx.restore(); }
+function drawHero(th,jY){ const hop=Math.max(0, 1-(now-hopT)/240); const dy=-Math.sin(hop*Math.PI)*38; const x=W/2, y=jY+dy;
+  ctx.save(); ctx.translate(x,y);
+  // 落点光
+  ctx.globalAlpha=.5+0.5*hop; ctx.fillStyle=th.glow; ctx.beginPath(); ctx.ellipse(0,18,46,14,0,0,6.29); ctx.fill(); ctx.globalAlpha=1;
+  const r=30; ctx.fillStyle='#3a3550'; // 耳朵
+  [[-r*0.6,-r*0.7],[r*0.6,-r*0.7]].forEach(([ex,ey])=>{ ctx.beginPath(); ctx.moveTo(ex-9,ey+10); ctx.lineTo(ex,ey-12); ctx.lineTo(ex+9,ey+10); ctx.closePath(); ctx.fillStyle='#9ad8ff'; ctx.fill(); });
+  // 身体
+  ctx.shadowColor=th.glow; ctx.shadowBlur=20; const bg=ctx.createLinearGradient(0,-r,0,r); bg.addColorStop(0,'#dff6ff'); bg.addColorStop(1,'#aee6ff');
+  ctx.fillStyle=bg; ctx.beginPath(); ctx.arc(0,0,r,0,6.29); ctx.fill(); ctx.shadowBlur=0;
+  // 头带
+  ctx.fillStyle='#ff8ad0'; ctx.fillRect(-r,-8,r*2,9);
+  // 爱心肚子
+  ctx.fillStyle='#ffd24a'; ctx.beginPath(); ctx.arc(0,8,9,0,6.29); ctx.fill(); ctx.fillStyle='#ff5b9e';
+  ctx.beginPath(); ctx.arc(-3,7,3,0,6.29); ctx.arc(3,7,3,0,6.29); ctx.moveTo(-6,8); ctx.lineTo(0,14); ctx.lineTo(6,8); ctx.fill();
+  ctx.restore(); }
+function hud(th){
+  ctx.save(); ctx.textAlign='center';
+  ctx.fillStyle='#fff'; ctx.font='900 '+Math.min(W,H)*0.06+'px sans-serif'; ctx.shadowColor=th.glow; ctx.shadowBlur=14;
+  ctx.fillText(score, W/2, H*0.14); ctx.shadowBlur=0;
+  const ft=(now-flash.t); if(ft<560){ const a=1-ft/560; ctx.globalAlpha=a;
+    ctx.fillStyle=flash.color; ctx.font='900 '+Math.min(W,H)*0.07+'px sans-serif'; ctx.shadowColor=flash.color; ctx.shadowBlur=18;
+    ctx.fillText(flash.txt, W/2, H*0.26);
+    ctx.fillStyle='#ff7ce0'; ctx.font='800 '+Math.min(W,H)*0.035+'px sans-serif'; ctx.fillText(flash.mult, W/2, H*0.31); ctx.globalAlpha=1; ctx.shadowBlur=0; }
+  ctx.restore(); }
+function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+// ---------- 结束 ----------
+function end(){ PP29.allOff();
+  document.getElementById('endScore').textContent=score;
+  document.getElementById('endCombo').textContent=maxCombo;
+  const rate=score/(TOTAL*50*2); document.getElementById('endRank').textContent = rate>.7?'S':rate>.5?'A':rate>.3?'B':'C';
+  document.getElementById('endScreen').classList.remove('hidden'); }
+
+// ---------- 输入 / 启动 ----------
+window.addEventListener('keydown', e=>{ if(e.code==='Space'||e.key===' '){ e.preventDefault(); hit(null); } });
+cv.addEventListener('pointerdown', ()=>hit(null));
+document.getElementById('btnConnect').addEventListener('click', async ()=>{ initAudio(); await connectMidi(); start(); });
+document.getElementById('btnSolo').addEventListener('click', ()=>{ initAudio(); start(); });
+document.getElementById('btnAgain').addEventListener('click', ()=>{ initAudio(); start(); });
+// 待机背景动画
+(function idle(){ if(!running){ now=performance.now(); render(); requestAnimationFrame(idle); } })();
+</script>
