@@ -141,10 +141,21 @@ function loop(){ now=performance.now()-startT;
 // ===== 渲染 =====
 function render(){ const th=theme(); drawSky(th); drawSun(th); drawPalms(th); drawGrid(th); drawGate(th); drawPath(th); drawHero(th); drawDebris(); drawHud(th); }
 function drawSky(th){ const g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,th.sky[0]); g.addColorStop(.45,th.sky[1]); g.addColorStop(1,'#04060f'); ctx.fillStyle=g; ctx.fillRect(0,0,W,H); }
-function drawSun(th){ const r=Math.min(W,H)*0.13,sx=W/2,sy=horizonY()-r*0.5; ctx.save();
+function drawSun(th){ const r=Math.min(W,H)*0.14,sx=W/2,sy=horizonY()-r*0.5; ctx.save();
   const g=ctx.createRadialGradient(sx,sy,r*0.2,sx,sy,r); g.addColorStop(0,'#fff'); g.addColorStop(.4,th.sun); g.addColorStop(1,th.sun+'00');
   ctx.fillStyle=g; ctx.beginPath(); ctx.arc(sx,sy,r,0,6.29); ctx.fill();
+  drawSunFigure(sx,sy,r);                                  // 太阳里的剪影舞者（原创抽象）
   ctx.fillStyle=th.sky[1]; for(let i=0;i<5;i++){ const y=sy-r*0.1+i*r*0.3; ctx.fillRect(sx-r,y,r*2,r*0.11); } ctx.restore(); }
+function drawSunFigure(sx,sy,r){ ctx.save(); ctx.translate(sx,sy+r*0.12); const u=r*0.46;
+  ctx.fillStyle='rgba(55,12,52,.40)'; ctx.strokeStyle='rgba(55,12,52,.40)'; ctx.lineCap='round';
+  ctx.beginPath(); ctx.arc(0,-u*0.95,u*0.22,0,6.29); ctx.fill();                              // 头
+  ctx.lineWidth=u*0.28; ctx.beginPath(); ctx.moveTo(0,-u*0.7); ctx.lineTo(0,u*0.12); ctx.stroke(); // 躯干
+  ctx.lineWidth=u*0.15; ctx.beginPath();                                                       // 双臂上举
+  ctx.moveTo(0,-u*0.5); ctx.quadraticCurveTo(-u*0.55,-u*0.78,-u*0.34,-u*1.2);
+  ctx.moveTo(0,-u*0.5); ctx.quadraticCurveTo(u*0.55,-u*0.78,u*0.34,-u*1.2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0,u*0.06); ctx.lineTo(-u*0.42,u*0.72); ctx.lineTo(u*0.42,u*0.72); ctx.closePath(); ctx.fill(); // 裙摆
+  ctx.lineWidth=u*0.13; ctx.beginPath(); ctx.moveTo(-u*0.12,u*0.62); ctx.lineTo(-u*0.2,u*1.08); ctx.moveTo(u*0.12,u*0.62); ctx.lineTo(u*0.2,u*1.08); ctx.stroke(); // 腿
+  ctx.restore(); }
 function drawPalms(th){ ctx.save(); ctx.strokeStyle='rgba(0,0,0,.6)'; const hY=horizonY();
   [[W*0.13,1],[W*0.87,-1],[W*0.03,1],[W*0.97,-1]].forEach(([x,d],i)=>{ const h=H*0.15*(i<2?1:.7); ctx.lineWidth=5; ctx.beginPath(); ctx.moveTo(x,hY); ctx.lineTo(x+d*7,hY-h); ctx.stroke();
     for(let k=-2;k<=2;k++){ ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(x+d*7,hY-h); ctx.quadraticCurveTo(x+d*7+k*16,hY-h-20,x+d*7+k*30,hY-h+8); ctx.stroke(); } }); ctx.restore(); }
@@ -196,7 +207,8 @@ function drawDebris(){ debris.forEach(d=>{ ctx.save(); ctx.globalAlpha=Math.max(
 function drawHud(th){ ctx.save(); ctx.textAlign='center';
   ctx.fillStyle='#fff'; ctx.font='900 '+Math.min(W,H)*0.065+'px sans-serif'; ctx.shadowColor=th.edge; ctx.shadowBlur=12; ctx.fillText(score,W/2,H*0.30); ctx.shadowBlur=0;
   const ft=now-flash.t; if(ft<560){ const a=1-ft/560; ctx.globalAlpha=a; const pop=1+0.12*(1-a);
-    ctx.fillStyle=flash.color; ctx.font='900 '+Math.min(W,H)*0.072*pop+'px sans-serif'; ctx.shadowColor=flash.color; ctx.shadowBlur=18; ctx.fillText(flash.txt,W/2,H*0.40); ctx.globalAlpha=1; ctx.shadowBlur=0; } ctx.restore(); }
+    ctx.fillStyle=flash.color; ctx.font='900 '+Math.min(W,H)*0.072*pop+'px sans-serif'; ctx.shadowColor=flash.color; ctx.shadowBlur=18; ctx.fillText(flash.txt,W/2,H*0.40);
+    ctx.fillStyle='#ff5bd0'; ctx.font='900 '+Math.min(W,H)*0.044*pop+'px sans-serif'; ctx.shadowColor='#ff5bd0'; ctx.fillText(flash.mult,W/2,H*0.46); ctx.globalAlpha=1; ctx.shadowBlur=0; } ctx.restore(); }
 
 // ===== 结束 / 输入 =====
 function end(){ stopMusic(); PP29.allOff(); document.getElementById('endScore').textContent=score; document.getElementById('endCombo').textContent=maxCombo;
