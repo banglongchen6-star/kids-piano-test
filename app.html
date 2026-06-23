@@ -104,6 +104,11 @@
   .switch{width:54px; height:30px; border-radius:999px; background:#ddd; position:relative;}
   .switch.on{background:var(--green);} .switch::after{content:""; position:absolute; top:3px; left:3px; width:24px; height:24px; border-radius:999px; background:#fff; transition:.15s;}
   .switch.on::after{left:27px;}
+  #gameOverlay{position:absolute; inset:0; background:#000; display:none; z-index:60;}
+  #gameOverlay.active{display:block;}
+  #gameFrame{width:100%; height:100%; border:none; display:block;}
+  .gameback{position:absolute; top:14px; left:14px; z-index:61; background:#fff; box-shadow:var(--shadow);
+    border:none; border-radius:999px; padding:10px 18px; font-size:16px; font-weight:800; color:var(--ink);}
   #rotate{position:fixed; inset:0; background:#2a2540; color:#fff; display:none; place-items:center; text-align:center; z-index:99; font-size:22px;}
   @media (orientation:portrait){ #rotate{display:grid;} .app{display:none;} }
 </style>
@@ -199,6 +204,12 @@
       <div class="set-row" style="border:none"><span>🎵 背景音乐</span><div class="switch" onclick="this.classList.toggle('on')"></div></div>
       <div style="text-align:right; margin-top:16px"><button class="btn" onclick="closeSettings()">完成</button></div>
     </div>
+  </div>
+
+  <!-- 游戏全屏容器 -->
+  <div id="gameOverlay">
+    <iframe id="gameFrame" allow="midi; autoplay; fullscreen" title="游戏"></iframe>
+    <button class="gameback" onclick="closeGame()">⬅ 返回</button>
   </div>
 
 </div>
@@ -312,17 +323,20 @@ function buildSongs(){
     list.appendChild(d); });
 }
 
-//============ 小游戏合集（占位）============//
+//============ 小游戏合集 ============//
 const GAMES=[
-  {n:'节奏拍拍',i:'👏'},{n:'听音辨音',i:'👂'},{n:'找不同',i:'🔍'},
-  {n:'音乐记忆',i:'🧠'},{n:'音阶接龙',i:'🎼'},{n:'涂色音乐',i:'🖍️'},
+  {n:'山谷回音',   i:'🏞️', d:'听辨音 · 找回声',   url:'games/valley-echo/index.html'},
+  {n:'音符小鸟归巢',i:'🐦', d:'跟灯弹 · 送鸟回家', url:'games/note-bird/index.html'},
+  {n:'荒唐节拍社', i:'🥁', d:'记和弦 · 踩节拍',   url:'games/beat-club/index.html'},
 ];
 function buildGames(){
   const list=document.getElementById('gameList');
-  GAMES.forEach(g=>{ const d=document.createElement('div'); d.className='game soon';
-    d.innerHTML=`<div class="gi">${g.i}</div><div class="gn">${g.n}</div><div class="sub" style="font-size:13px">敬请期待</div>`;
-    list.appendChild(d); });
+  GAMES.forEach(g=>{ const d=document.createElement('div'); d.className='game';
+    d.innerHTML=`<div class="gi">${g.i}</div><div class="gn">${g.n}</div><div class="sub" style="font-size:13px">${g.d}</div>`;
+    d.onclick=()=>openGame(g.url); list.appendChild(d); });
 }
+function openGame(url){ document.getElementById('gameFrame').src=url; document.getElementById('gameOverlay').classList.add('active'); }
+function closeGame(){ document.getElementById('gameOverlay').classList.remove('active'); document.getElementById('gameFrame').src='about:blank'; }
 
 //============ 初始化 ============//
 buildSongs(); buildGames(); buildLeftHand();
@@ -331,6 +345,6 @@ buildSongs(); buildGames(); buildLeftHand();
 (function(){ let last=null; setInterval(async()=>{ try{
   const r=await fetch(location.href,{method:'HEAD',cache:'no-store'});
   const tag=r.headers.get('etag')||r.headers.get('last-modified');
-  if(last&&tag&&tag!==last) location.reload(); last=tag;
+  if(last&&tag&&tag!==last && !document.getElementById('gameOverlay').classList.contains('active')) location.reload(); last=tag;
 }catch(e){} },10000); })();
 </script>

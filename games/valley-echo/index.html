@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#69c9f2" />
+    <title>山谷回音</title>
+    <link rel="stylesheet" href="./styles.css?v=2" />
+  </head>
+  <body>
+    <main id="app" class="game-shell" aria-label="山谷回音音乐听辨游戏">
+      <div class="scene" id="scene">
+        <div class="background-layer" aria-hidden="true"></div>
+        <div class="wash" aria-hidden="true"></div>
+
+        <header class="topbar">
+          <div class="brand-card">
+            <span class="brand-note">♪</span>
+            <div>
+              <h1>山谷回音</h1>
+              <p id="instruction">仔细听，跟着山谷的回声演奏吧！</p>
+            </div>
+          </div>
+
+          <div class="mode-switch" role="group" aria-label="游戏模式">
+            <button class="mode-btn active" data-mode="kids">彩豆音效</button>
+            <button class="mode-btn" data-mode="piano">星光钢琴</button>
+          </div>
+
+          <div class="status-card">
+            <div class="progress-dots" id="progressDots" aria-label="本关进度"></div>
+            <span class="score"><b id="score">0</b>/5</span>
+            <button class="midi-btn" id="midiBtn" title="连接 MIDI / PartyKeys">
+              <span class="midi-light"></span>MIDI
+            </button>
+          </div>
+        </header>
+
+        <section class="cave-layer" aria-label="回声山洞">
+          <button class="cave-button" id="caveButton" aria-label="播放回声旋律">
+            <span class="cave-glow"></span>
+            <span class="echo-ring ring-one"></span>
+            <span class="echo-ring ring-two"></span>
+            <span class="echo-ring ring-three"></span>
+            <span class="cave-note">♫</span>
+            <span class="play-label" id="playLabel">听回声</span>
+          </button>
+          <div class="floating-notes" id="floatingNotes" aria-hidden="true"></div>
+        </section>
+
+        <section class="tracks-layer" id="tracks" aria-label="三条旋律瀑布">
+          <article class="track" data-track="0">
+            <div class="track-title">回声 A</div>
+            <div class="answer-stream"></div>
+            <div class="player-stream"></div>
+            <div class="judge-line"></div>
+          </article>
+          <article class="track" data-track="1">
+            <div class="track-title">回声 B</div>
+            <div class="answer-stream"></div>
+            <div class="player-stream"></div>
+            <div class="judge-line"></div>
+          </article>
+          <article class="track" data-track="2">
+            <div class="track-title">回声 C</div>
+            <div class="answer-stream"></div>
+            <div class="player-stream"></div>
+            <div class="judge-line"></div>
+          </article>
+        </section>
+
+        <div class="mascot mascot-left" id="mascotLeft" aria-hidden="true">
+          <span class="antenna">♪</span>
+          <span class="face">•ᴗ•</span>
+          <span class="hand left-hand"></span><span class="hand right-hand"></span>
+        </div>
+        <div class="mascot mascot-right" id="mascotRight" aria-hidden="true">
+          <span class="antenna">♫</span>
+          <span class="face">•ᴗ•</span>
+          <span class="hand left-hand"></span><span class="hand right-hand"></span>
+        </div>
+
+        <div class="speech-bubble" id="speechBubble" role="status" aria-live="polite">
+          点一下山洞，听听今天的回声吧！
+        </div>
+
+        <section class="controls-layer">
+          <div class="pads-panel" id="padsPanel" aria-label="彩色音效打击垫">
+            <button class="pad red" data-pad="0" aria-label="红色 鸟叫"><span>🐦</span><small>鸟叫</small></button>
+            <button class="pad orange" data-pad="1" aria-label="橙色 溪水"><span>〰</span><small>溪水</small></button>
+            <button class="pad yellow" data-pad="2" aria-label="黄色 风铃"><span>✧</span><small>风铃</small></button>
+            <button class="pad green" data-pad="3" aria-label="绿色 蛙鸣"><span>🐸</span><small>蛙鸣</small></button>
+            <button class="pad cyan" data-pad="4" aria-label="青色 雨滴"><span>💧</span><small>雨滴</small></button>
+            <button class="pad blue" data-pad="5" aria-label="蓝色 铃铛"><span>♢</span><small>铃铛</small></button>
+          </div>
+
+          <div class="piano-panel disabled" id="pianoPanel" aria-label="两个完整八度钢琴键盘">
+            <div class="piano" id="piano"></div>
+          </div>
+        </section>
+
+        <footer class="footer-tip">
+          <span id="keyboardTip">鼠标点彩垫，或按数字 1–6</span>
+          <button id="replayBtn">↻ 再听一次</button>
+          <button id="submitBtn" disabled>完成演奏 ✓</button>
+        </footer>
+
+        <div class="particles" id="particles" aria-hidden="true"></div>
+
+        <div class="welcome" id="welcome">
+          <div class="welcome-card">
+            <div class="welcome-cave">♫</div>
+            <h2>山谷回音</h2>
+            <p>听一听山洞里的旋律，再用彩豆音效或星光钢琴把它弹回来。</p>
+            <button id="startBtn">进入山谷</button>
+            <small>支持鼠标、电脑键盘和 MIDI / PartyKeys</small>
+          </div>
+        </div>
+      </div>
+    </main>
+    <script src="./app.js?v=3"></script>
+  </body>
+</html>

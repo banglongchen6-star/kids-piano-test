@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>荒唐节拍社</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="game">
+    <header class="masthead">
+      <div>
+        <p class="kicker">PARTYKEYS 36</p>
+        <h1>荒唐节拍社</h1>
+      </div>
+      <div class="hud">
+        <span>关卡 <b id="levelNumber">--/20</b></span>
+        <span>分数 <b id="score">0</b></span>
+        <span>连击 <b id="combo">0</b></span>
+      </div>
+    </header>
+
+    <section id="connectScreen" class="screen connect-screen">
+      <div class="connect-art" aria-hidden="true">
+        <div class="mascot">
+          <i class="antenna"></i>
+          <div class="mascot-face"><i></i><i></i><b></b></div>
+          <div class="mascot-body"></div>
+          <div class="cable"></div>
+        </div>
+        <div class="plug-bubble">?</div>
+      </div>
+      <div class="connect-copy">
+        <p class="step-label">演出前检查</p>
+        <h2>先叫醒你的键盘</h2>
+        <p id="connectMessage">接通 PartyKeys 36 的电源和 USB 线，然后让我们互相打个招呼。</p>
+        <div class="checklist">
+          <div id="deviceStep" class="check-row active"><b>1</b><span>寻找键盘</span></div>
+          <div id="lightStep" class="check-row"><b>2</b><span>全键绿灯一秒</span></div>
+          <div id="successStep" class="check-row"><b>3</b><span>灯光熄灭，连接成功</span></div>
+        </div>
+        <button id="connectButton" class="big-button">连接 PartyKeys</button>
+      </div>
+    </section>
+
+    <section id="readyScreen" class="screen ready-screen hidden">
+      <div class="success-burst">
+        <div class="success-face">✓</div>
+      </div>
+      <p class="step-label">连接成功</p>
+      <h2>键盘醒啦！</h2>
+      <p>绿灯测试完成，所有灯光已经熄灭。音乐开始后，每关先记住亮起的和弦。</p>
+      <button id="gameStartButton" class="big-button green">开始游戏</button>
+    </section>
+
+    <section id="gameScreen" class="screen play-screen hidden">
+      <div id="levelIntro" class="level-intro">
+        <div class="intro-stamp">下一关</div>
+        <h2 id="levelTitle">校长的假发危机</h2>
+        <p>记住这个和弦</p>
+        <strong id="chordName" class="chord-name">C</strong>
+        <div id="countdown" class="countdown">准备</div>
+      </div>
+
+      <div id="sceneViewport" class="scene-viewport hidden">
+        <div id="sceneImage" class="scene-image"></div>
+        <div id="beatPip" class="beat-pip">1</div>
+        <div id="judgement" class="judgement"></div>
+      </div>
+
+      <div class="keyboard-wrap">
+        <div class="keyboard-label">
+          <span id="phaseLabel">四拍记忆时间</span>
+          <b id="targetChord">C</b>
+        </div>
+        <div id="keyboard" class="keyboard" aria-label="PartyKeys 36 灯光预览"></div>
+      </div>
+    </section>
+
+    <section id="resultScreen" class="screen result-screen hidden">
+      <p class="step-label">20关演出结束</p>
+      <h2 id="resultTitle">荒唐得很有节奏！</h2>
+      <div id="finalScore" class="final-score">0</div>
+      <p id="resultComment"></p>
+      <div id="resultStats" class="result-stats"></div>
+      <button id="retryButton" class="big-button">再演一次</button>
+    </section>
+  </main>
+  <script src="./game.js"></script>
+</body>
+</html>

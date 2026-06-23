@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#153e68" />
+  <title>音符小鸟归巢 · PartyKeys 36</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <main id="game">
+    <div class="sky-glow"></div>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-kicker">PartyKeys 36</span>
+        <h1>音符小鸟归巢</h1>
+      </div>
+      <div class="level-chip">
+        <span id="levelLabel">第 1 关</span>
+        <b id="progressLabel">0 / 8</b>
+      </div>
+      <button id="settingsBtn" class="round-btn" aria-label="设置">⚙</button>
+    </header>
+
+    <section id="playfield" aria-label="五线谱小鸟轨道">
+      <div id="staff" class="staff">
+        <i></i><i></i><i></i><i></i><i></i>
+      </div>
+      <div id="birdsLayer"></div>
+      <div id="judgeLine" class="judge-line">
+        <span></span>
+        <b>回家线</b>
+      </div>
+      <div id="stars" class="stars"></div>
+      <div id="judgement" class="judgement" aria-live="polite"></div>
+
+      <div class="guide-wrap">
+        <div id="guideBubble" class="guide-bubble">红色小鸟来啦，按红色亮灯键！</div>
+        <div class="guide" aria-label="小彩豆">
+          <div class="guide-sprout">✦</div>
+          <div class="guide-face"><i></i><i></i><b>◡</b></div>
+          <span>小彩豆</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="keyboard-panel">
+      <div class="keyboard-heading">
+        <div>
+          <strong>跟着亮灯弹一弹</strong>
+          <span id="midiStatus">电脑键盘 A–J 也可以试玩</span>
+        </div>
+        <button id="midiBtn" class="midi-btn">连接 MIDI</button>
+      </div>
+      <div id="keyboard" class="keyboard" aria-label="虚拟钢琴键盘"></div>
+    </section>
+
+    <div id="startScreen" class="overlay show">
+      <div class="card welcome-card">
+        <div class="tiny-birds">●　●　●</div>
+        <p class="eyebrow">PartyKeys 36 亮灯启蒙游戏</p>
+        <h2>音符小鸟归巢</h2>
+        <p>看准亮起的琴键，帮彩色小鸟飞回温暖的树屋吧！</p>
+        <div class="level-picker">
+          <button id="prevLevel" aria-label="上一关">‹</button>
+          <div><small>选择关卡</small><b id="pickerLevel">第 1 关</b><span id="pickerDesc">红色小鸟 · 慢速练习</span></div>
+          <button id="nextLevel" aria-label="下一关">›</button>
+        </div>
+        <button id="startBtn" class="primary-btn">开始迎接小鸟</button>
+        <span class="gentle-note">这里没有失败，只有一次次温柔的练习</span>
+      </div>
+    </div>
+
+    <div id="completeScreen" class="overlay">
+      <div class="card complete-card">
+        <div class="constellation">✦ · ✧ · ✦<br>　✧ · ✦</div>
+        <p class="eyebrow">星星组成了新的图案！</p>
+        <h2 id="completeTitle">今天有 8 只小鸟回家啦！</h2>
+        <p id="unlockText">你解锁了新的小鸟皮肤！</p>
+        <div class="complete-actions">
+          <button id="replayBtn" class="secondary-btn">再玩一次</button>
+          <button id="continueBtn" class="primary-btn">下一关</button>
+        </div>
+      </div>
+    </div>
+
+    <dialog id="settings">
+      <button id="closeSettings" class="dialog-close">×</button>
+      <h2>游戏设置</h2>
+      <label>音乐音量 <input id="volume" type="range" min="0" max="1" step="0.05" value="0.35"></label>
+      <label>关卡速度 <input id="speed" type="range" min="0.75" max="1.25" step="0.05" value="1"></label>
+      <p>MIDI 输入会自动识别。若设备支持标准 MIDI 灯光反馈，游戏会同步发送对应音符的亮度。</p>
+    </dialog>
+  </main>
+  <script src="./game.js"></script>
+</body>
+</html>
