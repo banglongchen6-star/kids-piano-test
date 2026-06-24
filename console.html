@@ -90,7 +90,7 @@ function playNote(n,v){ if(!actx||!document.getElementById('sound').checked)retu
 async function connect(){ if(!navigator.requestMIDIAccess){ setStatus('此浏览器不支持 Web MIDI，请用 Chrome。','err'); return; }
   try{ initAudio(); setStatus('正在请求 MIDI 权限…（弹窗点允许）'); midi=await navigator.requestMIDIAccess({sysex:true}); midi.onstatechange=pick; pick(); }
   catch(e){ setStatus('连接失败：'+e+'（多半没授予 SysEx 权限）','err'); } }
-function pick(){ out=null; for(const p of midi.outputs.values()){ if(/partykey|popupiano/i.test(p.name)){out=p;break;} if(!out)out=p; }
+function pick(){ out=null; for(const p of midi.outputs.values()){ if(/partykey/i.test(p.name)){out=p;break;} if(!out)out=p; }
   for(const p of midi.inputs.values()) p.onmidimessage=onMidi;
   const ins=[...midi.inputs.values()].map(p=>p.name).join(', ')||'无';
   if(!out&&ins==='无'){ setStatus('没找到 MIDI 设备。蓝牙先配对 / USB 插好后重连。','err'); return; }

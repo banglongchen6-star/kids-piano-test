@@ -5,7 +5,7 @@ window.PP29 = {
   HEADER:[0xF0,0x05,0x30,0x7F,0x7F,0x20,0x00], N:36,
   outs:[], lit:{},                                   // lamp -> [r,g,b]
   PALETTE:[[255,0,0],[255,255,0],[0,255,0],[0,255,255],[0,0,255],[160,0,255],[255,255,255]],
-  attach(access){ const all=[...access.outputs.values()]; this.outs=all.filter(o=>/partykey|popupiano/i.test(o.name||'')); if(!this.outs.length) this.outs=all; this.init(); return this.outs; },
+  attach(access){ const all=[...access.outputs.values()]; this.outs=all.filter(o=>/partykey/i.test(o.name||'')); if(!this.outs.length) this.outs=all; this.init(); return this.outs; },
   setOuts(list){ this.outs=list||[]; this.init(); },
   _send(msg){ this.outs.forEach(o=>{ try{ o.send(msg); }catch(e){} }); },
   init(){ this._send([...this.HEADER,0x0F,0x01,0xF7]); },          // 进入 LED 模式

@@ -194,7 +194,7 @@ function encodeColor(value) {
 }
 
 function enterLedMode() {
-  // PopuPiano 29 无需进入 LED 模式；调色板由 PP29.setOuts 自动上传
+  // PartyKeys 36 无需进入 LED 模式；调色板由 PP29.setOuts 自动上传
 }
 
 function setHardwareLeds(groups) {
@@ -222,11 +222,11 @@ function lightChord(chord) {
 function refreshMidi() {
   const allInputs = [...midiAccess.inputs.values()];
   const allOutputs = [...midiAccess.outputs.values()];
-  midiInputs = allInputs.filter(input => /popupiano|partykey/i.test(input.name || ""));
-  midiOutputs = allOutputs.filter(output => /popupiano|partykey/i.test(output.name || ""));
+  midiInputs = allInputs.filter(input => /partykey/i.test(input.name || ""));
+  midiOutputs = allOutputs.filter(output => /partykey/i.test(output.name || ""));
   if (!midiInputs.length && allInputs.length === 1) midiInputs = allInputs;
   if (!midiOutputs.length && allOutputs.length === 1) midiOutputs = allOutputs;
-  PP29.setOuts(midiOutputs);              // 接入 PopuPiano 29 控灯
+  PP29.setOuts(midiOutputs);              // 接入 PartyKeys 36 控灯
   midiInputs.forEach(input => input.onmidimessage = handleMidi);
   if (midiInputs.length && midiOutputs.length) enterLedMode();
   return midiInputs.length > 0 && midiOutputs.length > 0;

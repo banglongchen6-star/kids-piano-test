@@ -434,7 +434,7 @@
       const inputs = [...state.midi.inputs.values()];
       const outputs = [...state.midi.outputs.values()];
       inputs.forEach(input => input.onmidimessage = onMidiMessage);
-      PP29.attach(state.midi);                                   // 接入 PopuPiano 29 控灯
+      PP29.attach(state.midi);                                   // 接入 PartyKeys 36 控灯
       state.midiOutput = PP29.outs[0] || outputs[0] || null;
       els.midi.classList.toggle("connected", inputs.length > 0 || !!state.midiOutput);
       els.midi.innerHTML = `<span class="midi-light"></span>${state.midiOutput ? "PartyKeys" : inputs.length ? "MIDI 输入" : "未发现设备"}`;
@@ -449,7 +449,7 @@
     const [status, note, velocity] = event.data;
     const command = status & 0xf0;
     if (command === 0x90 && velocity > 0) {
-      const index = note - 48;          // PopuPiano 29 最左键 MIDI48 → index0
+      const index = note - 48;          // PartyKeys 36 最左键 MIDI48 → index0
       if (state.mode === "piano" && index >= 0 && index < 24) handleInput(index, "midi");
     }
   }

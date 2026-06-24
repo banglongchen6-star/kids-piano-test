@@ -172,7 +172,6 @@
       <button class="round" onclick="go('result')">⏸</button>
     </div>
     <div class="stage">
-      <div class="lefthand"><h3 id="leftTitle">左手 · 胶囊和弦</h3><div class="pad-grid" id="padGrid"></div></div>
       <div class="guide">
         <svg class="mascot" viewBox="0 0 100 100"><circle cx="50" cy="50" r="42" fill="#ffce4a"/><circle cx="38" cy="44" r="6" fill="#3a3550"/><circle cx="62" cy="44" r="6" fill="#3a3550"/><path d="M36 62 Q50 76 64 62" stroke="#3a3550" stroke-width="5" fill="none" stroke-linecap="round"/><circle cx="28" cy="58" r="6" fill="#ff9ec4"/><circle cx="72" cy="58" r="6" fill="#ff9ec4"/></svg>
         <div class="now" id="nowNote">准备好了吗？</div>
@@ -199,7 +198,6 @@
     <div class="panel">
       <h2>⚙️ 设置</h2>
       <div class="set-row"><span>设备连接</span><button class="btn blue" style="font-size:16px; padding:.5em 1.1em" onclick="connectPiano()">连接钢琴</button></div>
-      <div class="set-row"><span>左手模式</span><div class="seg" id="modeSeg"><button class="sel" data-mode="capsule" onclick="setMode('capsule')">胶囊和弦</button><button data-mode="keys24" onclick="setMode('keys24')">24键</button></div></div>
       <div class="set-row"><span>🔊 按键发声</span><div class="switch on" onclick="this.classList.toggle('on'); soundOn=this.classList.contains('on')"></div></div>
       <div class="set-row" style="border:none"><span>🎵 背景音乐</span><div class="switch" onclick="this.classList.toggle('on')"></div></div>
       <div style="text-align:right; margin-top:16px"><button class="btn" onclick="closeSettings()">完成</button></div>
@@ -254,7 +252,7 @@ async function connectPiano(){
   }catch(e){ setConn(false); alert('连接失败：'+e+'\n（多半未授予 MIDI/SysEx 权限）'); }
 }
 function refreshPorts(){
-  out=null; for(const p of midi.outputs.values()){ if(/partykey|popupiano/i.test(p.name)){out=p;break;} if(!out)out=p; }
+  out=null; for(const p of midi.outputs.values()){ if(/partykey/i.test(p.name)){out=p;break;} if(!out)out=p; }
   for(const p of midi.inputs.values()) p.onmidimessage=onMidi;
   const inName=[...midi.inputs.values()].map(p=>p.name)[0]||'';
   setConn(!!(out||inName), ((out&&out.name)||inName||'PartyKeys').slice(0,14));
@@ -273,16 +271,6 @@ function onMidi(e){ const d=[...e.data]; if(d[0]===0xF0) return; const st=d[0]&0
   if(st===0x90&&d[2]>0){ playNote(d[1],d[2]); litKey(d[1],true); }
   else if(st===0x80||(st===0x90&&d[2]===0)){ litKey(d[1],false); } }
 
-//============ 左手模式 ============//
-let mode='capsule';
-function setMode(m){ mode=m; document.querySelectorAll('#modeSeg button').forEach(b=>b.classList.toggle('sel', b.dataset.mode===m)); buildLeftHand(); }
-function buildLeftHand(){
-  const grid=document.getElementById('padGrid'), title=document.getElementById('leftTitle'); grid.innerHTML='';
-  if(mode==='capsule'){ title.textContent='左手 · 胶囊和弦'; grid.style.gridTemplateColumns='repeat(3,1fr)';
-    ['C','Dm','Em','F','G','Am','G7','Bdim','—'].forEach(c=>{const d=document.createElement('div');d.className='pad';d.textContent=c;grid.appendChild(d);});
-  }else{ title.textContent='左手 · 24 键'; grid.style.gridTemplateColumns='repeat(6,1fr)';
-    for(let i=0;i<24;i++){const d=document.createElement('div');d.className='pad';d.style.fontSize='11px';d.textContent=i;grid.appendChild(d);} }
-}
 
 //============ 屏幕钢琴（29 键 C3–E5 / MIDI 48–76）============//
 function buildPiano(){
@@ -334,7 +322,7 @@ function openGame(url){ document.getElementById('gameFrame').src=url; document.g
 function closeGame(){ document.getElementById('gameOverlay').classList.remove('active'); document.getElementById('gameFrame').src='about:blank'; }
 
 //============ 初始化 ============//
-buildSongs(); buildGames(); buildLeftHand();
+buildSongs(); buildGames();
 
 //============ 开发期自动刷新（线上有更新就自动重载）============//
 (function(){ let last=null; setInterval(async()=>{ try{
