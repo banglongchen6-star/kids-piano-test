@@ -194,7 +194,7 @@ function encodeColor(value) {
 }
 
 function enterLedMode() {
-  // PartyKeys 36 无需进入 LED 模式；调色板由 PP29.setOuts 自动上传
+  // PartyKeys 36 进 LED 模式(0x0F)由 PP29.setOuts() 自动发送，这里无需重复
 }
 
 function setHardwareLeds(groups) {
