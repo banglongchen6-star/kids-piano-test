@@ -240,7 +240,8 @@ function playNote(note,vel){ if(!audioCtx||!soundOn) return;
   [[f,'triangle',1],[f*2,'sine',0.4]].forEach(([fr,ty,a])=>{const o=audioCtx.createOscillator();o.type=ty;o.frequency.value=fr;const og=audioCtx.createGain();og.gain.value=a;o.connect(og);og.connect(g);o.start(t);o.stop(t+1.2);});
 }
 
-//============ 真·连接钢琴（Web MIDI）============//
+//============ 真·连接钢琴（Web MIDI · PartyKeys 36）============//
+const PK_HEADER=[0xF0,0x05,0x30,0x7F,0x7F,0x20,0x00];   // PartyKeys 36 厂商头
 let midi=null, out=null;
 async function connectPiano(){
   if(!navigator.requestMIDIAccess){ alert('此浏览器不支持 Web MIDI，请用 Chrome 打开'); return; }
@@ -248,36 +249,29 @@ async function connectPiano(){
     initAudio();
     midi=await navigator.requestMIDIAccess({sysex:true});
     midi.onstatechange=refreshPorts; refreshPorts();
-    send(3,[0x0A,0,0]);   // 查询左手设备，自动切模式
-    defaultLights(3);      // 键盘默认彩虹常亮
+    pkInit();              // 进入 LED 模式
+    defaultLights();       // 36 键默认彩虹常亮
   }catch(e){ setConn(false); alert('连接失败：'+e+'\n（多半未授予 MIDI/SysEx 权限）'); }
 }
 function refreshPorts(){
-  out=null; for(const p of midi.outputs.values()){ if(/popupiano/i.test(p.name)){out=p;break;} if(!out)out=p; }
+  out=null; for(const p of midi.outputs.values()){ if(/partykey|popupiano/i.test(p.name)){out=p;break;} if(!out)out=p; }
   for(const p of midi.inputs.values()) p.onmidimessage=onMidi;
   const inName=[...midi.inputs.values()].map(p=>p.name)[0]||'';
-  setConn(!!(out||inName), ((out&&out.name)||inName||'').replace(/popupiano/i,'PopuPiano').slice(0,12));
+  setConn(!!(out||inName), ((out&&out.name)||inName||'PartyKeys').slice(0,14));
 }
-function send(comp,payload){ if(out) out.send([0xF0,comp,...payload,0xF7]); }
-function uploadPalette(comp){ const P=[[127,0,0],[127,127,0],[0,127,0],[0,127,127],[0,0,127],[80,0,127],[127,127,127]]; const f=[]; P.forEach(c=>f.push(...c)); send(comp,[0x1E,P.length,1,...f]); }
-function lightAll(comp,n){ const ps=[]; for(let i=0;i<n;i++)ps.push(i,(i%7)+1); send(comp,[0x20,n,...ps]); }
-function allOff(comp,n){ const ps=[]; for(let i=0;i<n;i++)ps.push(i,0); send(comp,[0x20,n,...ps]); }
-const LAMPS={2:9,3:29,4:24};
-function defaultLights(comp){ try{ uploadPalette(comp); lightAll(comp,LAMPS[comp]); }catch(e){} }  // 默认彩虹常亮
+function pkSend(msg){ if(out) out.send(msg); }
+function pkInit(){ pkSend([...PK_HEADER,0x0F,0x01,0xF7]); }            // 进入 LED 模式
+function pkClear(){ pkSend([...PK_HEADER,0x71,0x00,0xF7]); }           // 全部熄灭
+const enc=v=>[Math.floor(v/128),v%128];                               // 8bit→双7bit
+function pkLight(groups){ if(!out||!groups.length) return; const m=[...PK_HEADER,0x15,groups.length];
+  groups.forEach(g=>{ m.push(...enc(g.rgb[0]),...enc(g.rgb[1]),...enc(g.rgb[2]),g.keys.length,...g.keys); }); m.push(0xF7); pkSend(m); }
+function defaultLights(){ pkInit(); const C=[[255,0,0],[255,160,0],[255,255,0],[0,255,0],[0,255,255],[0,0,255],[160,0,255]];
+  const gr={}; for(let i=0;i<36;i++){ const c=C[i%C.length]; (gr[c.join()]=gr[c.join()]||{rgb:c,keys:[]}).keys.push(i); } pkLight(Object.values(gr)); }  // 36 键彩虹
 
-//============ 接收：解码 + 发声 + 屏幕点灯 ============//
-function onMidi(e){
-  const d=[...e.data];
-  if(d[0]===0xF0){
-    const cmd=d[2], p=d.slice(3,d.length-1);
-    if(cmd===0x0A){ const lc=p[0]===1?2:(p[0]===2?4:0); if(lc){ setMode(lc===2?'capsule':'keys24'); defaultLights(lc); } }
-    if(cmd===0x09){ const lc=p[1]===1?2:(p[1]===2?4:0); if(lc){ setMode(lc===2?'capsule':'keys24'); defaultLights(lc); } }
-  }else{
-    const st=d[0]&0xF0;
-    if(st===0x90&&d[2]>0){ playNote(d[1],d[2]); litKey(d[1],true); }
-    else if(st===0x80||(st===0x90&&d[2]===0)){ litKey(d[1],false); }
-  }
-}
+//============ 接收：发声 + 屏幕点灯 ============//
+function onMidi(e){ const d=[...e.data]; if(d[0]===0xF0) return; const st=d[0]&0xF0;
+  if(st===0x90&&d[2]>0){ playNote(d[1],d[2]); litKey(d[1],true); }
+  else if(st===0x80||(st===0x90&&d[2]===0)){ litKey(d[1],false); } }
 
 //============ 左手模式 ============//
 let mode='capsule';
@@ -294,11 +288,11 @@ function buildLeftHand(){
 function buildPiano(){
   const piano=document.getElementById('piano'); if(piano.dataset.built) return; piano.dataset.built='1';
   const WHITE=[0,2,4,5,7,9,11], SHARP_AFTER=[0,2,5,7,9]; let whites=[];
-  for(let n=48;n<=76;n++) if(WHITE.includes(n%12)) whites.push(n);
+  for(let n=48;n<=83;n++) if(WHITE.includes(n%12)) whites.push(n);   // PartyKeys 36 键 C3–B5
   whites.forEach(n=>{ const k=document.createElement('div'); k.className='wkey'; k.dataset.note=n;
     if(n%12===0){const l=document.createElement('div');l.className='lbl';l.textContent='C'+(Math.floor(n/12)-1);k.appendChild(l);} piano.appendChild(k); });
   const wW=100/whites.length;
-  whites.forEach((n,i)=>{ if(SHARP_AFTER.includes(n%12)&&n+1<=76){ const b=document.createElement('div'); b.className='bkey'; b.dataset.note=n+1;
+  whites.forEach((n,i)=>{ if(SHARP_AFTER.includes(n%12)&&n+1<=83){ const b=document.createElement('div'); b.className='bkey'; b.dataset.note=n+1;
     b.style.left=((i+1)*wW)+'%'; b.style.width=(wW*0.62)+'%'; piano.appendChild(b); } });
 }
 function litKey(note,on){ const el=document.querySelector(`.piano [data-note="${note}"]`); if(el) el.classList.toggle('lit',on); }
