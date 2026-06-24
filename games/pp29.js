@@ -5,8 +5,9 @@ window.PP29 = {
   HEADER:[0xF0,0x05,0x30,0x7F,0x7F,0x20,0x00], N:36,
   outs:[], lit:{},                                   // lamp -> [r,g,b]
   PALETTE:[[255,0,0],[255,255,0],[0,255,0],[0,255,255],[0,0,255],[160,0,255],[255,255,255]],
-  attach(access){ const all=[...access.outputs.values()]; this.outs=all.filter(o=>/partykey/i.test(o.name||'')); if(!this.outs.length) this.outs=all; this.init(); return this.outs; },
-  setOuts(list){ this.outs=list||[]; this.init(); },
+  attach(access){ const all=[...access.outputs.values()]; this.outs=all.filter(o=>/partykey/i.test(o.name||'')); if(!this.outs.length) this.outs=all; this.init(); this._flash(); return this.outs; },
+  setOuts(list){ this.outs=list||[]; this.init(); this._flash(); },
+  _flash(){ this.lit={}; for(let i=0;i<this.N;i++) this.lit[i]=[255,255,255]; this.flush(); setTimeout(()=>{ this.lit={}; this.clearHW(); }, 600); },  // 连接确认：整排闪一下
   _send(msg){ this.outs.forEach(o=>{ try{ o.send(msg); }catch(e){} }); },
   init(){ this._send([...this.HEADER,0x0F,0x01,0xF7]); },          // 进入 LED 模式
   _enc(v){ return [Math.floor(v/128), v%128]; },                  // 8bit→双7bit
