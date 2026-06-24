@@ -1,10 +1,12 @@
 <!--
-  PartyKeys 36 调试台
-  目的：验证 36 键键盘的输入与控灯（厂商头 05 30 7F7F 2000、进LED 0x0F、逐键RGB 0x15、清灯 0x71）
+  双协议调试台 —— 用来判定你的键盘到底用哪套控灯协议
+  A) PartyKeys 36：厂商头 05 30 7F7F 2000、进LED 0x0F、逐键RGB 0x15、清灯 0x71
+  B) 官方(PopuPiano/Excel)：component 0x03、调色板 0x1E、亮灯 0x20
+  分别切到两套各点「全亮彩虹」，哪套灯亮 = 你的设备就是哪套。
 -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>PartyKeys 36 调试台</title>
+<title>双协议调试台</title>
 <style>
   :root{ color-scheme:dark; }
   *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -13,7 +15,8 @@
   #status{ padding:9px 12px; border-radius:9px; margin-bottom:12px; background:#2a2d36; line-height:1.4; font-size:14px; }
   #status.ok{ background:#14532d; } #status.err{ background:#5c1a1a; }
   button{ font-size:14px; font-weight:600; padding:10px 12px; margin:3px; border:none; border-radius:9px; color:#fff; background:#3b82f6; }
-  button:active{ transform:scale(.96); } button.connect{ background:#16a34a; font-size:17px; padding:14px 22px; } button.off{ background:#475569; } button.warn{ background:#b45309; }
+  button:active{ transform:scale(.96); } button.connect{ background:#16a34a; font-size:17px; padding:14px 22px; } button.off{ background:#475569; }
+  .seg{ background:#2a2d36; } .seg.sel{ background:#7c3aed; }
   .topbar{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-bottom:12px; }
   .panel{ background:#1c1f27; border:1px solid #2c2f3a; border-radius:12px; padding:12px; margin-bottom:12px; }
   .row{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:6px; }
@@ -23,25 +26,27 @@
   .key{ aspect-ratio:1/1.25; border-radius:8px; background:#2a2d36; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:11px; color:#9aa3b2; transition:background .08s,color .08s; }
   .key.on{ color:#14161c; font-weight:700; }
   .logbar{ display:flex; align-items:center; gap:10px; margin:14px 0 6px; }
-  #log{ height:260px; overflow-y:auto; background:#0d0f14; border:1px solid #2c2f3a; border-radius:10px; padding:8px; font-family:ui-monospace,Menlo,monospace; font-size:12.5px; line-height:1.5; }
+  #log{ height:240px; overflow-y:auto; background:#0d0f14; border:1px solid #2c2f3a; border-radius:10px; padding:8px; font-family:ui-monospace,Menlo,monospace; font-size:12.5px; line-height:1.5; }
   .le{ padding:2px 4px; border-radius:4px; white-space:pre-wrap; word-break:break-all; } .le .hex{ color:#5b6472; }
-  .le.note{ color:#60a5fa; } .le.sx{ color:#34d399; } .le.tx{ color:#6b7280; } .le.sys{ color:#fbbf24; } .le.info{ color:#94a3b8; }
-  .hint{ font-size:13px; color:#8b93a3; margin-top:10px; line-height:1.5; }
+  .le.note{ color:#60a5fa; } .le.tx{ color:#6b7280; } .le.sys{ color:#fbbf24; } .le.info{ color:#94a3b8; }
+  .big{ background:#16a34a; }
 </style>
 
-<h1>🎛 PartyKeys 36 调试台</h1>
+<h1>🎛 双协议调试台（判定你的键盘协议）</h1>
 <div id="status">未连接。点「连接」开始（蓝牙先在系统设置配对，USB 直接插）。</div>
 
 <div class="topbar">
   <button class="connect" onclick="connect()">连接</button>
-  <label><input type="checkbox" id="sound" checked> 🔊 按键发声</label>
+  <span style="font-size:13px;color:#b8c0cf">协议：</span>
+  <button id="p36"  class="seg sel" onclick="setProto('pk36')">PartyKeys36 (0x15)</button>
+  <button id="poff" class="seg"     onclick="setProto('official')">官方 (0x1E+0x20)</button>
+  <label style="margin-left:auto"><input type="checkbox" id="sound" checked> 🔊 按键发声</label>
 </div>
 
 <div class="panel">
   <div class="row">
-    <button onclick="rainbow()">🌈 全亮彩虹</button>
+    <button class="big" onclick="rainbow()">🌈 全亮彩虹（看这个！）</button>
     <button class="off" onclick="allOff()">熄灭</button>
-    <button onclick="chase()">✨ 跑马灯</button>
     <button onclick="scan()">🔢 逐键扫描</button>
   </div>
   <div class="row">
@@ -52,7 +57,7 @@
       <option value="0,255,0">绿</option><option value="0,255,255">青</option><option value="0,0,255">蓝</option>
       <option value="160,0,255">紫</option><option value="255,255,255">白</option>
     </select>
-    <button onclick="manual()">点亮</button>
+    <button onclick="manual()">点亮单键</button>
   </div>
 </div>
 
@@ -64,14 +69,17 @@
 </div>
 <div id="log"></div>
 
-<div class="hint">✅ 目标：① 上面按钮能控琴键灯 → 「电脑→琴」通；② 手按琴键 → 屏幕格子亮 + 日志解码 → 「琴→电脑」通。<br>36 键 MIDI 48–83，灯号 = 音符 − 48。</div>
+<div class="hint" style="font-size:13px;color:#8b93a3;margin-top:10px;line-height:1.6">
+  <b>判定步骤</b>：① 点「连接」授权；② 协议选 <b>PartyKeys36</b> → 点「全亮彩虹」，看键盘亮不亮；③ 再切到 <b>官方</b> → 再点「全亮彩虹」。<br>
+  哪一套让你的键盘亮 = 你的设备就是哪套，把结果告诉我，我就把整套软件锁定到那套协议。<br>
+  另外：手按键盘的键，屏幕格子会亮 + 发声 + 日志显示「键号」= 输入也通了。
+</div>
 
 <script>
-const HEADER=[0xF0,0x05,0x30,0x7F,0x7F,0x20,0x00], BASE=48, N=36;
-let midi=null, out=null;
+const HEADER36=[0xF0,0x05,0x30,0x7F,0x7F,0x20,0x00], COMP=0x03, BASE=48, N=36;
+let midi=null, out=null, proto='pk36';
 const hx=b=>b.toString(16).toUpperCase().padStart(2,'0'); const hxs=a=>a.map(hx).join(' ');
 
-// 屏幕 36 键
 const keysEl=document.getElementById('keys'), keyEls=[];
 for(let i=0;i<N;i++){ const d=document.createElement('div'); d.className='key'; d.innerHTML=`<span style="font-size:13px;font-weight:700">${i}</span><span>${BASE+i}</span>`; keysEl.appendChild(d); keyEls.push(d); }
 function setStatus(m,c=''){ const s=document.getElementById('status'); s.textContent=m; s.className=c; }
@@ -90,31 +98,48 @@ function playNote(n,v){ if(!actx||!document.getElementById('sound').checked)retu
 async function connect(){ if(!navigator.requestMIDIAccess){ setStatus('此浏览器不支持 Web MIDI，请用 Chrome。','err'); return; }
   try{ initAudio(); setStatus('正在请求 MIDI 权限…（弹窗点允许）'); midi=await navigator.requestMIDIAccess({sysex:true}); midi.onstatechange=pick; pick(); }
   catch(e){ setStatus('连接失败：'+e+'（多半没授予 SysEx 权限）','err'); } }
-function pick(){ out=null; for(const p of midi.outputs.values()){ if(/partykey/i.test(p.name)){out=p;break;} if(!out)out=p; }
+function pick(){ out=null; for(const p of midi.outputs.values()){ if(/partykey|popupiano/i.test(p.name)){out=p;break;} if(!out)out=p; }
   for(const p of midi.inputs.values()) p.onmidimessage=onMidi;
   const ins=[...midi.inputs.values()].map(p=>p.name).join(', ')||'无';
   if(!out&&ins==='无'){ setStatus('没找到 MIDI 设备。蓝牙先配对 / USB 插好后重连。','err'); return; }
-  pkInit(); setStatus(`已连接 ✓  输出: ${out?out.name:'无'} | 输入: ${ins}`,'ok'); }
+  doInit(); setStatus(`已连接 ✓  输出: ${out?out.name:'无'} | 输入: ${ins}  | 当前协议: ${proto==='pk36'?'PartyKeys36':'官方'}`,'ok'); }
 
-// PartyKeys 36 协议
+function setProto(p){ proto=p; document.getElementById('p36').classList.toggle('sel',p==='pk36'); document.getElementById('poff').classList.toggle('sel',p==='official');
+  log('info','切换协议 → '+(p==='pk36'?'PartyKeys36 (0x15)':'官方 (0x1E+0x20)')); if(out) doInit(); }
+
+// 发送
 function tx(msg){ if(out)out.send(msg); log('tx','TX →',msg); }
-function pkInit(){ tx([...HEADER,0x0F,0x01,0xF7]); log('info','已发送进入 LED 模式 (0x0F)'); }
-const enc=v=>[Math.floor(v/128),v%128];
-function clearHW(){ tx([...HEADER,0x71,0x00,0xF7]); }
-function lightGroups(groups){ if(!groups.length)return; const m=[...HEADER,0x15,groups.length]; groups.forEach(g=>{ m.push(...enc(g.rgb[0]),...enc(g.rgb[1]),...enc(g.rgb[2]),g.keys.length,...g.keys); }); m.push(0xF7); tx(m); }
+const enc36=v=>[Math.floor(v/128),v%128];     // PartyKeys36: 8bit→双7bit
 const RAINBOW=[[255,0,0],[255,160,0],[255,255,0],[0,255,0],[0,255,255],[0,0,255],[160,0,255]];
 
-function rainbow(){ const gr={}; for(let i=0;i<N;i++){ const c=RAINBOW[i%RAINBOW.length]; (gr[c.join()]=gr[c.join()]||{rgb:c,keys:[]}).keys.push(i); } clearHW(); lightGroups(Object.values(gr)); }
-function allOff(){ clearHW(); }
-let chaseT=null; function chase(){ if(chaseT){ clearInterval(chaseT); chaseT=null; allOff(); return; } let p=0; chaseT=setInterval(()=>{ clearHW(); lightGroups([{rgb:[255,255,255],keys:[p]}]); p=(p+1)%N; },130); }
-function scan(){ let i=0; log('info','逐键扫描 0→'+(N-1)); const t=setInterval(()=>{ if(i>=N){clearInterval(t);allOff();log('info','扫描结束');return;} clearHW(); lightGroups([{rgb:RAINBOW[i%RAINBOW.length],keys:[i]}]); log('info','点亮灯号 '+i); i++; },380); }
-function manual(){ const id=parseInt(document.getElementById('mid').value)||0; const rgb=document.getElementById('mcol').value.split(',').map(Number); clearHW(); lightGroups([{rgb,keys:[id]}]); }
+function doInit(){ if(proto==='pk36'){ tx([...HEADER36,0x0F,0x01,0xF7]); log('info','已发送进入 LED 模式 (0x0F)'); } else { log('info','官方协议无需 init'); } }
+function doClear(){ if(proto==='pk36') tx([...HEADER36,0x71,0x00,0xF7]); else { const ps=[]; for(let i=0;i<N;i++)ps.push(i,0); tx([0xF0,COMP,0x20,N,...ps,0xF7]); } }
+// 统一点灯：list=[{lamp, rgb:[r,g,b]}]（rgb 为 0-255）
+function renderLit(list){
+  if(proto==='pk36'){
+    doClear();
+    const gr={}; list.forEach(({lamp,rgb})=>{ const k=rgb.join(','); (gr[k]=gr[k]||{rgb,keys:[]}).keys.push(lamp); });
+    const gk=Object.keys(gr); if(!gk.length) return;
+    const m=[...HEADER36,0x15,gk.length]; gk.forEach(k=>{ const g=gr[k]; m.push(...enc36(g.rgb[0]),...enc36(g.rgb[1]),...enc36(g.rgb[2]),g.keys.length,...g.keys); }); m.push(0xF7); tx(m);
+  } else {
+    // 官方：去重颜色→调色板槽(0x1E，7bit) → 0x20 分配
+    const cols=[], slot={}; list.forEach(({rgb})=>{ const k=rgb.join(','); if(!(k in slot)){ slot[k]=cols.length+1; cols.push(rgb); } });
+    if(cols.length){ const pal=[0xF0,COMP,0x1E,cols.length,0x01]; cols.forEach(c=>pal.push(c[0]>>1,c[1]>>1,c[2]>>1)); pal.push(0xF7); tx(pal); }
+    const pairs=[]; list.forEach(({lamp,rgb})=>pairs.push(lamp, slot[rgb.join(',')])); tx([0xF0,COMP,0x20,list.length,...pairs,0xF7]);
+  }
+}
+
+// 操作
+function rainbow(){ const list=[]; for(let i=0;i<N;i++) list.push({lamp:i, rgb:RAINBOW[i%RAINBOW.length]}); renderLit(list); }
+function allOff(){ doClear(); }
+function scan(){ let i=0; log('info','逐键扫描 0→'+(N-1)); const t=setInterval(()=>{ if(i>=N){clearInterval(t);allOff();log('info','扫描结束');return;} renderLit([{lamp:i, rgb:RAINBOW[i%RAINBOW.length]}]); log('info','点亮灯号 '+i); i++; },380); }
+function manual(){ const id=parseInt(document.getElementById('mid').value)||0; const rgb=document.getElementById('mcol').value.split(',').map(Number); renderLit([{lamp:id, rgb}]); }
 
 // 接收
 function onMidi(e){ const d=[...e.data];
   if(d[0]===0xF0){ log('sys',`SysEx (${d.length}字节)`,d); return; }
   const st=d[0]&0xF0, ch=d[0]&0x0F;
-  if(st===0x90&&d[2]>0){ const idx=d[1]-BASE; playNote(d[1],d[2]); if(idx>=0&&idx<N){ keyEls[idx].classList.add('on'); const c=RAINBOW[idx%RAINBOW.length]; keyEls[idx].style.background=`rgb(${c[0]},${c[1]},${c[2]})`; clearHW(); lightGroups([{rgb:c,keys:[idx]}]); } log('note',`钢琴键按下 音符=${d[1]} 键号=${idx} 力度=${d[2]} ch=${ch}`,d); }
+  if(st===0x90&&d[2]>0){ const idx=d[1]-BASE; playNote(d[1],d[2]); if(idx>=0&&idx<N){ keyEls[idx].classList.add('on'); const c=RAINBOW[idx%RAINBOW.length]; keyEls[idx].style.background=`rgb(${c[0]},${c[1]},${c[2]})`; renderLit([{lamp:idx, rgb:c}]); } log('note',`钢琴键按下 音符=${d[1]} 键号=${idx} 力度=${d[2]} ch=${ch}`,d); }
   else if(st===0x80||(st===0x90&&d[2]===0)){ const idx=d[1]-BASE; if(idx>=0&&idx<N){ keyEls[idx].classList.remove('on'); keyEls[idx].style.background=''; } log('note',`钢琴键松开 音符=${d[1]} ch=${ch}`,d); }
   else if(st===0xB0){ log('sys',`控制器 CC#${d[1]}=${d[2]}`,d); }
   else log('sys',`MIDI 0x${hx(d[0])}`,d); }
